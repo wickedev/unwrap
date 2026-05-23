@@ -28,8 +28,16 @@ export interface SerializedAction {
   ts: number
   url: string
   selector: {
+    // Human-readable Playwright-style locator used in generated specs.
     primary: string
+    // Flat key-value of fallback signals the replay tries in order.
     alternatives: Record<string, string | undefined>
+    // Optional structured fields the replay needs beyond simple strings.
+    role?: string
+    roleName?: string
+    // Open-shadow piercing path: each segment is a CSS selector inside
+    // its shadow boundary, walked outermost → innermost.
+    piercedCss?: string[]
   }
   details: Record<string, unknown>
 }

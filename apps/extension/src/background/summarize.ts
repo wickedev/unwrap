@@ -216,6 +216,9 @@ function pickSelector(s: SelectorSet): SerializedAction['selector'] {
       text: s.text,
       css: s.css,
     },
+    ...(s.role ? { role: s.role } : {}),
+    ...(s.roleName ? { roleName: s.roleName } : {}),
+    ...(s.piercedCss && s.piercedCss.length > 0 ? { piercedCss: s.piercedCss } : {}),
   }
 }
 

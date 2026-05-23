@@ -297,27 +297,235 @@ async function runStep(page: Page, action: SerializedAction, index: number): Pro
 }
 
 async function locate(page: Page, action: SerializedAction) {
-  const candidates: string[] = []
-  const alt = action.selector.alternatives
-  const testId = alt.testId as string | undefined
-  const css = alt.css as string | undefined
-
-  if (testId) {
-    const m = testId.match(/\[(?:data-test(?:id)?|data-qa|data-cy)="([^"]+)"\]/)
-    if (m) candidates.push(`[data-testid="${m[1]}"]`, `[data-test="${m[1]}"]`, testId)
-    else candidates.push(testId)
-  }
-  if (css) candidates.push(css)
-
-  for (const sel of candidates) {
+  const candidates = buildLocatorCandidates(action)
+  const deadline = Date.now() + PER_STEP_TIMEOUT_MS
+  for (const candidate of candidates) {
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) break
+    const timeout = Math.min(700, remaining)
     try {
-      const handle = await page.waitForSelector(sel, { visible: true, timeout: 2_000 })
+      const handle = await waitForCandidate(page, candidate, timeout)
       if (handle) return handle
     } catch {
       // try next
     }
   }
   return null
+}
+
+type Candidate =
+  | { kind: 'puppeteer'; value: string } // hand to page.waitForSelector
+  | { kind: 'text'; value: string } // page.evaluateHandle — text/ engine breaks Workers V8 isolate
+  | { kind: 'name'; value: string } // accessible-name walk
+
+async function waitForCandidate(page: Page, c: Candidate, timeout: number) {
+  if (c.kind === 'puppeteer') {
+    return page.waitForSelector(c.value, { timeout })
+  }
+  if (c.kind === 'text') return queryByText(page, c.value, timeout)
+  return queryByAccessibleName(page, c.value, timeout)
+}
+
+// Single page.evaluate computes a unique nth-of-type CSS path to the
+// best-matching element, then page.$ promotes that path to a real
+// puppeteer ElementHandle. Avoids the asElement() pitfall (where
+// returning a DOM Element from evaluateHandle silently degrades to
+// null) and keeps the per-locate work to one round-trip per attempt.
+async function queryByText(page: Page, needle: string, timeoutMs: number) {
+  const path = await page.evaluate(
+    (n: string): string | null => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const G: any = (globalThis as unknown as Record<string, unknown>)
+      const doc = G.document
+      const lc = n.toLowerCase().trim()
+      if (!lc || !doc?.body) return null
+      const all = doc.querySelectorAll('body *')
+      let best: unknown = null
+      let bestArea = Number.POSITIVE_INFINITY
+      for (let i = 0; i < all.length; i++) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const el: any = all[i]
+        const tag = el.tagName
+        if (tag === 'SCRIPT' || tag === 'STYLE') continue
+        const t = String(el.textContent ?? '').toLowerCase().trim()
+        if (!t || !t.includes(lc)) continue
+        const rect = el.getBoundingClientRect()
+        const area = rect.width * rect.height || Number.MAX_SAFE_INTEGER
+        if (area < bestArea) {
+          best = el
+          bestArea = area
+        }
+      }
+      if (!best) return null
+
+      const segs: string[] = []
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let cur: any = best
+      while (cur && cur.parentElement) {
+        const parent = cur.parentElement
+        const same: unknown[] = []
+        for (let k = 0; k < parent.children.length; k++) {
+          if (parent.children[k].tagName === cur.tagName) same.push(parent.children[k])
+        }
+        const idx = same.indexOf(cur) + 1
+        segs.unshift(`${String(cur.tagName).toLowerCase()}:nth-of-type(${idx})`)
+        cur = parent
+      }
+      return segs.join(' > ')
+    },
+    needle,
+  )
+  if (!path) return null
+  return page.waitForSelector(path, { timeout: timeoutMs })
+}
+
+async function queryByAccessibleName(page: Page, target: string, timeoutMs: number) {
+  const path = await page.evaluate(
+    (n: string): string | null => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const G: any = (globalThis as unknown as Record<string, unknown>)
+      const doc = G.document
+      const lc = n.toLowerCase().trim()
+      if (!lc) return null
+      const els = doc.querySelectorAll(
+        'a, button, [role], input, select, textarea, summary, details, label',
+      )
+      for (let i = 0; i < els.length; i++) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const el: any = els[i]
+        const aria = String(el.getAttribute('aria-label') ?? '')
+        const labelledBy = String(el.getAttribute('aria-labelledby') ?? '')
+          .split(/\s+/)
+          .filter(Boolean)
+          .map((id: string) => String(doc.getElementById(id)?.textContent ?? ''))
+          .join(' ')
+        const imgAlt = el.tagName === 'IMG' ? String(el.alt ?? '') : ''
+        let labels = ''
+        if (el.labels && typeof el.labels.length === 'number') {
+          const acc: string[] = []
+          for (let j = 0; j < el.labels.length; j++) acc.push(String(el.labels[j].textContent ?? ''))
+          labels = acc.join(' ')
+        }
+        const textContent = String(el.textContent ?? '').trim()
+        const candidate = [aria, labelledBy, imgAlt, labels, textContent].join(' ').toLowerCase()
+        if (candidate.includes(lc)) return cssPathTo(el as unknown)
+      }
+      return null
+
+      function cssPathTo(node: unknown): string {
+        const segs: string[] = []
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let cur: any = node
+        while (cur && cur.parentElement) {
+          const parent = cur.parentElement
+          const same: unknown[] = []
+          for (let k = 0; k < parent.children.length; k++) {
+            if (parent.children[k].tagName === cur.tagName) same.push(parent.children[k])
+          }
+          const idx = same.indexOf(cur) + 1
+          segs.unshift(`${String(cur.tagName).toLowerCase()}:nth-of-type(${idx})`)
+          cur = parent
+        }
+        return segs.join(' > ')
+      }
+    },
+    target,
+  )
+  if (!path) return null
+  return page.waitForSelector(path, { timeout: timeoutMs })
+}
+
+
+// Build an ordered list of locator candidates. We split between native
+// puppeteer selectors (CSS / `pierce/...`) and in-page evaluate paths
+// (name / text). Puppeteer's `text/` engine can't run on Cloudflare
+// Workers (V8 isolate blocks `new Function()`), and `aria/` here didn't
+// match — so we fall back to our own page.evaluate walk for both.
+function buildLocatorCandidates(action: SerializedAction): Candidate[] {
+  const out: Candidate[] = []
+  const sel = action.selector
+  const alt = sel.alternatives
+
+  // 1. data-* test attributes
+  const testId = alt.testId as string | undefined
+  if (testId) {
+    const m = testId.match(/\[(?:data-test(?:id)?|data-qa|data-cy)="([^"]+)"\]/)
+    if (m) {
+      const val = m[1]!
+      pup(out, `[data-testid="${val}"]`)
+      pup(out, `[data-test="${val}"]`)
+      pup(out, `[data-qa="${val}"]`)
+      pup(out, `[data-cy="${val}"]`)
+      pup(out, `pierce/[data-testid="${val}"]`)
+    } else {
+      pup(out, testId)
+    }
+  }
+
+  // 2. ARIA accessible name — our own page.evaluate walk (handles
+  //    open shadow via querySelectorAll; closed shadow is unreachable
+  //    from page JS by definition).
+  if (sel.roleName) {
+    name(out, sel.roleName)
+  }
+
+  // 3. label / placeholder
+  const label = alt.label as string | undefined
+  if (label && label !== sel.roleName) {
+    name(out, label)
+  }
+  const placeholder = alt.placeholder as string | undefined
+  if (placeholder) {
+    pup(out, `[placeholder="${escAttr(placeholder)}"]`)
+    pup(out, `pierce/[placeholder="${escAttr(placeholder)}"]`)
+  }
+
+  // 4. visible text
+  const txt = alt.text as string | undefined
+  if (txt && txt.length <= 60) {
+    text(out, txt)
+  }
+
+  // 5. captured CSS path
+  const css = alt.css as string | undefined
+  if (css) {
+    pup(out, css)
+    pup(out, `pierce/${css}`)
+  }
+
+  // 6. captured shadow-piercing path
+  if (sel.piercedCss && sel.piercedCss.length > 0) {
+    const last = sel.piercedCss[sel.piercedCss.length - 1]
+    if (last) pup(out, `pierce/${last}`)
+  }
+
+  return dedupeCandidates(out)
+}
+
+function pup(out: Candidate[], value: string): void {
+  out.push({ kind: 'puppeteer', value })
+}
+function name(out: Candidate[], value: string): void {
+  out.push({ kind: 'name', value })
+}
+function text(out: Candidate[], value: string): void {
+  out.push({ kind: 'text', value })
+}
+
+function escAttr(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
+function dedupeCandidates(xs: Candidate[]): Candidate[] {
+  const seen = new Set<string>()
+  const out: Candidate[] = []
+  for (const x of xs) {
+    const key = `${x.kind}:${x.value}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(x)
+  }
+  return out
 }
 
 function ok(step: VerifyStep, startedAt: number): VerifyStep {
