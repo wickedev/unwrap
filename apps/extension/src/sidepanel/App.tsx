@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { RuntimeMessage, SessionMeta } from '@/shared/events'
 import { authIsValid, type UnwrapSettings } from '@/shared/settings'
+import { signInWithGoogleFromPanel, signOutFromPanel } from './auth'
 
 async function send<T>(msg: RuntimeMessage): Promise<T> {
   const res = (await chrome.runtime.sendMessage(msg)) as { ok: boolean; result?: T; error?: string }
@@ -148,7 +149,7 @@ export function App() {
             setBusy(true)
             setError(null)
             try {
-              await send({ kind: 'sign_in_google' })
+              await signInWithGoogleFromPanel()
               await refresh()
             } catch (e) {
               setError(e instanceof Error ? e.message : String(e))
@@ -157,7 +158,7 @@ export function App() {
             }
           }}
           onSignOut={async () => {
-            await send({ kind: 'sign_out' })
+            await signOutFromPanel()
             await refresh()
           }}
           busy={busy}

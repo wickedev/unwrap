@@ -16,7 +16,7 @@ id = "fdda984b911c42afaedcca48ed5d73b9"
 
 [vars]
 # Comma-separated list of email domains/addresses allowed to sign in. Empty = allow any Google account.
-ALLOWED_EMAILS = "orange881217@gmail.com"
+ALLOWED_EMAILS = "orange881217@gmail.com,ryan.y@protopie.io"
 # The extension's redirect URL used in launchWebAuthFlow. Must match the
 # extension's chromiumapp.org URL — set after first build via:
 #   chrome.identity.getRedirectURL()

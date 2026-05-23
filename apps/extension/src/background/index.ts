@@ -10,7 +10,6 @@ import {
 import { TabRecorder } from './recorder'
 import { exportSessionAsHar, exportSessionAsJson, exportSessionAsPlaywright } from './export'
 import { captureStorageState } from './storage-state'
-import { signInWithGoogle, signOut } from './auth'
 import { generateAiTest } from './llm'
 import { getSettings, setSettings } from '@/shared/settings'
 
@@ -107,10 +106,6 @@ async function handle(msg: RuntimeMessage, sender: chrome.runtime.MessageSender)
       return getSettings()
     case 'set_settings':
       return setSettings(msg.patch)
-    case 'sign_in_google':
-      return signInWithGoogle()
-    case 'sign_out':
-      return signOut()
     case 'generate_ai_test':
       return generateAiTest(msg.sessionId)
     default:

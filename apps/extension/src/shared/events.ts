@@ -266,6 +266,4 @@ export type RuntimeMessage =
   | { kind: 'action_event'; event: ActionEvent }
   | { kind: 'get_settings' }
   | { kind: 'set_settings'; patch: Partial<import('./settings').UnwrapSettings> }
-  | { kind: 'sign_in_google' }
-  | { kind: 'sign_out' }
   | { kind: 'generate_ai_test'; sessionId: string }
