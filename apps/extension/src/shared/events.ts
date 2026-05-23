@@ -27,7 +27,13 @@ export interface SessionMeta {
     domSnapshots: number
     axTrees: number
   }
+  upload?: UploadStatus
 }
+
+export type UploadStatus =
+  | { state: 'pending' }
+  | { state: 'done'; serverSessionId: string; url: string; uploadedAt: number }
+  | { state: 'error'; message: string; failedAt: number }
 
 export type SessionEvent =
   | NavigationEvent

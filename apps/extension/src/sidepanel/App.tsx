@@ -4,10 +4,12 @@ import {
   AlertTriangle,
   CloudUpload,
   Code2,
+  ExternalLink,
   FileJson,
   Globe,
   HardDrive,
   Layers,
+  Loader2,
   LogIn,
   LogOut,
   MousePointerClick,
@@ -392,7 +394,14 @@ function SessionCard({
 
         <Separator className="my-2.5" />
 
-        <div className="flex flex-wrap gap-1.5">
+        <UploadRow
+          session={session}
+          aiReady={aiReady}
+          busy={busy}
+          onUpload={onUpload}
+        />
+
+        <div className="mt-2 flex flex-wrap gap-1.5">
           {recording && (
             <>
               <Button size="sm" variant="destructive" onClick={onStop} disabled={busy}>
@@ -403,14 +412,6 @@ function SessionCard({
               </Button>
             </>
           )}
-          <Button
-            size="sm"
-            onClick={onUpload}
-            disabled={busy || !aiReady}
-            title={aiReady ? 'Upload to server and open in new tab' : 'Sign in with Google in Settings first'}
-          >
-            <CloudUpload /> Upload & open
-          </Button>
           <Button size="sm" variant="secondary" onClick={onExportPlaywright} disabled={busy}>
             <Code2 /> Playwright
           </Button>
@@ -431,16 +432,102 @@ function SessionCard({
             <Trash2 />
           </Button>
         </div>
-
-        {aiReady ? null : (
-          <div className="mt-2 flex items-center gap-1.5 rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-muted)] px-2 py-1.5 text-[10px] text-[var(--color-muted-foreground)]">
-            <Sparkles className="size-3" />
-            Sign in via Settings to enable Upload & AI generation
-          </div>
-        )}
       </CardContent>
     </Card>
   )
+}
+
+function UploadRow({
+  session,
+  aiReady,
+  busy,
+  onUpload,
+}: {
+  session: SessionMeta
+  aiReady: boolean
+  busy: boolean
+  onUpload: () => void
+}): React.JSX.Element {
+  const upload = session.upload
+  const recording = session.status === 'recording'
+
+  if (recording) {
+    return (
+      <div className="flex items-center gap-2 rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-muted)] px-2.5 py-1.5 text-[11px] text-[var(--color-muted-foreground)]">
+        <Sparkles className="size-3" />
+        <span>Stop recording to auto-upload {aiReady ? '' : '(after signing in)'}</span>
+      </div>
+    )
+  }
+
+  if (upload?.state === 'done') {
+    return (
+      <div className="flex items-center gap-2 rounded-md border border-[color-mix(in_oklab,var(--color-success)_30%,var(--color-border))] bg-[color-mix(in_oklab,var(--color-success)_8%,transparent)] px-2.5 py-1.5 text-[11px]">
+        <CloudUpload className="size-3.5 text-[var(--color-success)]" />
+        <span className="flex-1 text-[var(--color-success)]">
+          Uploaded {timeAgo(upload.uploadedAt)}
+        </span>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => chrome.tabs.create({ url: upload.url })}
+          title="Open the uploaded session in a new tab"
+        >
+          <ExternalLink /> Open in web
+        </Button>
+      </div>
+    )
+  }
+
+  if (upload?.state === 'pending') {
+    return (
+      <div className="flex items-center gap-2 rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-muted)] px-2.5 py-1.5 text-[11px] text-[var(--color-muted-foreground)]">
+        <Loader2 className="size-3 animate-spin" />
+        Uploading to server…
+      </div>
+    )
+  }
+
+  if (upload?.state === 'error') {
+    return (
+      <div className="flex items-start gap-2 rounded-md border border-[color-mix(in_oklab,var(--color-destructive)_30%,var(--color-border))] bg-[color-mix(in_oklab,var(--color-destructive)_8%,transparent)] px-2.5 py-1.5 text-[11px] text-[var(--color-destructive)]">
+        <AlertTriangle className="mt-0.5 size-3 shrink-0" />
+        <div className="flex-1 break-words">
+          Upload failed: {upload.message}
+        </div>
+        <Button size="sm" variant="secondary" onClick={onUpload} disabled={busy || !aiReady}>
+          <RefreshCw /> Retry
+        </Button>
+      </div>
+    )
+  }
+
+  // No upload state yet — old session, or signed out at stop time
+  return (
+    <div className="flex items-center gap-2 rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-muted)] px-2.5 py-1.5 text-[11px] text-[var(--color-muted-foreground)]">
+      <CloudUpload className="size-3" />
+      <span className="flex-1">
+        {aiReady ? 'Not uploaded yet.' : 'Sign in via Settings to enable auto-upload.'}
+      </span>
+      {aiReady && (
+        <Button size="sm" onClick={onUpload} disabled={busy}>
+          <CloudUpload /> Upload now
+        </Button>
+      )}
+    </div>
+  )
+}
+
+function timeAgo(ts: number): string {
+  const diff = Date.now() - ts
+  const s = Math.floor(diff / 1000)
+  if (s < 60) return `${s}s ago`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  const d = Math.floor(h / 24)
+  return `${d}d ago`
 }
 
 function CameraIcon(): React.JSX.Element {

@@ -11,7 +11,7 @@ import { TabRecorder } from './recorder'
 import { exportSessionAsHar, exportSessionAsJson, exportSessionAsPlaywright } from './export'
 import { captureStorageState } from './storage-state'
 import { uploadSessionToServer } from './llm'
-import { getSettings, setSettings } from '@/shared/settings'
+import { authIsValid, getSettings, setSettings } from '@/shared/settings'
 
 const recorders = new Map<number, TabRecorder>()
 
@@ -41,10 +41,13 @@ chrome.runtime.onMessage.addListener((msg: RuntimeMessage, sender, sendResponse)
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   const rec = recorders.get(tabId)
-  if (rec) {
-    void rec.stop().finally(() => recorders.delete(tabId))
-    void markStopped(rec.sessionId)
-  }
+  if (!rec) return
+  const sessionId = rec.sessionId
+  void rec.stop().finally(async () => {
+    recorders.delete(tabId)
+    await markStopped(sessionId)
+    void autoUpload(sessionId, { openTab: false })
+  })
 })
 
 async function handle(msg: RuntimeMessage, sender: chrome.runtime.MessageSender): Promise<unknown> {
@@ -52,7 +55,7 @@ async function handle(msg: RuntimeMessage, sender: chrome.runtime.MessageSender)
     case 'start_session':
       return startSession(msg.tabId)
     case 'stop_session':
-      return stopSession(msg.sessionId)
+      return stopSession(msg.sessionId, { autoUpload: true })
     case 'list_sessions':
       return listSessions()
     case 'get_session':
@@ -106,11 +109,8 @@ async function handle(msg: RuntimeMessage, sender: chrome.runtime.MessageSender)
       return getSettings()
     case 'set_settings':
       return setSettings(msg.patch)
-    case 'upload_session': {
-      const result = await uploadSessionToServer(msg.sessionId)
-      await chrome.tabs.create({ url: result.url })
-      return result
-    }
+    case 'upload_session':
+      return autoUpload(msg.sessionId, { openTab: true, force: true })
     default:
       throw new Error(`unknown message: ${(msg as { kind: string }).kind}`)
   }
@@ -170,7 +170,10 @@ async function startSession(tabId: number): Promise<SessionMeta> {
   return meta
 }
 
-async function stopSession(sessionId: string): Promise<SessionMeta | undefined> {
+async function stopSession(
+  sessionId: string,
+  opts: { autoUpload?: boolean } = {},
+): Promise<SessionMeta | undefined> {
   for (const [tabId, rec] of recorders) {
     if (rec.sessionId === sessionId) {
       await rec.stop()
@@ -178,7 +181,11 @@ async function stopSession(sessionId: string): Promise<SessionMeta | undefined> 
       break
     }
   }
-  return markStopped(sessionId)
+  const meta = await markStopped(sessionId)
+  if (opts.autoUpload) {
+    void autoUpload(sessionId, { openTab: true })
+  }
+  return meta
 }
 
 async function markStopped(sessionId: string): Promise<SessionMeta | undefined> {
@@ -190,5 +197,64 @@ async function markStopped(sessionId: string): Promise<SessionMeta | undefined> 
     await putSession(meta)
   }
   return meta
+}
+
+const uploadsInFlight = new Set<string>()
+
+interface AutoUploadOptions {
+  openTab?: boolean
+  force?: boolean
+}
+
+interface AutoUploadResult {
+  state: 'skipped' | 'done' | 'error'
+  url?: string
+  message?: string
+}
+
+async function autoUpload(sessionId: string, opts: AutoUploadOptions = {}): Promise<AutoUploadResult> {
+  if (uploadsInFlight.has(sessionId)) return { state: 'skipped', message: 'already in flight' }
+  uploadsInFlight.add(sessionId)
+  try {
+    const meta = await getSession(sessionId)
+    if (!meta) return { state: 'skipped', message: 'session not found' }
+
+    // Already uploaded — just (optionally) re-open the existing tab.
+    if (!opts.force && meta.upload?.state === 'done') {
+      if (opts.openTab) await chrome.tabs.create({ url: meta.upload.url })
+      return { state: 'done', url: meta.upload.url }
+    }
+
+    const settings = await getSettings()
+    if (!settings.serverUrl || !authIsValid(settings.auth)) {
+      return { state: 'skipped', message: 'not signed in' }
+    }
+
+    await putSession({ ...meta, upload: { state: 'pending' } })
+    const result = await uploadSessionToServer(sessionId)
+    const next = await getSession(sessionId)
+    if (next) {
+      next.upload = {
+        state: 'done',
+        serverSessionId: result.id,
+        url: result.url,
+        uploadedAt: Date.now(),
+      }
+      await putSession(next)
+    }
+    if (opts.openTab) await chrome.tabs.create({ url: result.url })
+    return { state: 'done', url: result.url }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    console.error('[unwrap] auto-upload failed', sessionId, message)
+    const next = await getSession(sessionId)
+    if (next) {
+      next.upload = { state: 'error', message, failedAt: Date.now() }
+      await putSession(next)
+    }
+    return { state: 'error', message }
+  } finally {
+    uploadsInFlight.delete(sessionId)
+  }
 }
 
