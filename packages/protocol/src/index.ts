@@ -18,7 +18,7 @@ export interface SessionSummary {
   storageState: SerializedStorageState | null
   consoleErrors: { ts: number; message: string }[]
   exceptions: { ts: number; message: string; stack?: string }[]
-  significantResponses: { url: string; status: number; mimeType: string }[]
+  significantResponses: { url: string; status: number; mimeType: string; ts?: number; method?: string }[]
   axTreeSummary: { url: string; nodeCount: number }[]
   domSnapshotSummary: { url: string; sizeBytes: number }[]
 }

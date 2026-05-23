@@ -73,7 +73,7 @@ export function summarizeSession(meta: SessionMeta, events: SessionEvent[]): Ses
       case 'response': {
         const r = ev as ResponseEvent
         if (!r.bodyRef && r.status && (r.status >= 400 || /\/api\/|\/graphql/.test(r.url))) {
-          significantResponses.push({ url: r.url, status: r.status, mimeType: r.mimeType })
+          significantResponses.push({ url: r.url, status: r.status, mimeType: r.mimeType, ts: r.ts })
         }
         break
       }

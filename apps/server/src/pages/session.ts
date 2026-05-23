@@ -1,6 +1,7 @@
 import { html, raw } from 'hono/html'
 import type { StoredSession, VerificationResult, VerifyStep, VisualDiff } from '@unwrap/protocol'
 import { Layout, type Renderable } from './layout'
+import { renderTimeline } from './timeline'
 
 export function SessionDetailPage({
   email,
@@ -90,22 +91,8 @@ export function SessionDetailPage({
     </div>
 
     <div class="section">
-      <h2>Actions captured</h2>
-      <div class="card">
-        ${summary.actions.length === 0
-          ? html`<div class="muted">No user actions recorded.</div>`
-          : html`<ol style="padding-left: 22px; margin: 0;">
-              ${summary.actions.slice(0, 30).map(
-                (a) => html`<li style="margin: 4px 0;">
-                  <code>${a.type}</code> →
-                  <code style="font-size: 11px;">${truncate(a.selector?.primary ?? '', 60)}</code>
-                </li>`,
-              )}
-              ${summary.actions.length > 30
-                ? html`<li class="muted">... and ${summary.actions.length - 30} more</li>`
-                : ''}
-            </ol>`}
-      </div>
+      <h2>Timeline</h2>
+      ${renderTimeline(session)}
     </div>
   `
 
