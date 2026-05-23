@@ -113,7 +113,7 @@ app.post('/api/generate', async (c) => {
     return c.json(err('summary and fallbackSpec are required'), 400)
   }
 
-  const model = body.summary && c.env.GEMINI_MODEL ? c.env.GEMINI_MODEL : 'gemini-2.5-pro'
+  const model = c.env.GEMINI_MODEL ?? 'gemini-2.5-flash'
   try {
     const result: GenerateResponse = await callGemini(body, {
       apiKey: c.env.GEMINI_API_KEY,

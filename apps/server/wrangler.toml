@@ -3,12 +3,9 @@ main = "src/index.ts"
 compatibility_date = "2025-01-15"
 compatibility_flags = ["nodejs_compat"]
 
-# OAuth state lives in KV with a short TTL. Create with:
-#   wrangler kv namespace create OAUTH_STATE
-# then paste the returned id below.
-# [[kv_namespaces]]
-# binding = "OAUTH_STATE"
-# id = "<paste-from-wrangler>"
+[[kv_namespaces]]
+binding = "OAUTH_STATE"
+id = "fdda984b911c42afaedcca48ed5d73b9"
 
 # Production secrets — set via:
 #   wrangler secret put GOOGLE_CLIENT_ID
@@ -24,5 +21,6 @@ ALLOWED_EMAILS = ""
 # extension's chromiumapp.org URL — set after first build via:
 #   chrome.identity.getRedirectURL()
 EXTENSION_REDIRECT_URL = ""
-# Gemini model. gemini-2.5-pro for highest quality + vision; gemini-2.0-flash for cheaper/faster.
-GEMINI_MODEL = "gemini-2.5-pro"
+# Gemini model. gemini-2.5-flash works on the free tier (vision-capable);
+# gemini-2.5-pro is highest quality but currently requires billing to be enabled on the GCP project.
+GEMINI_MODEL = "gemini-2.5-flash"

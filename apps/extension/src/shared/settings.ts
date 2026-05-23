@@ -10,7 +10,7 @@ export interface AuthState {
 }
 
 const DEFAULTS: UnwrapSettings = {
-  serverUrl: '',
+  serverUrl: 'https://unwrap-server.orange881217.workers.dev',
   auth: null,
 }
 
