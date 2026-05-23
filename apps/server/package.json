@@ -12,6 +12,7 @@
     "tail": "wrangler tail"
   },
   "dependencies": {
+    "@cloudflare/puppeteer": "^1.1.0",
     "@unwrap/protocol": "workspace:*",
     "hono": "^4.6.13"
   },

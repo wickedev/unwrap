@@ -2,6 +2,8 @@ export interface Env {
   // KV
   OAUTH_STATE?: KVNamespace
   SESSIONS?: KVNamespace
+  // Browser Rendering
+  BROWSER?: Fetcher
   // Vars
   ALLOWED_EMAILS?: string
   EXTENSION_REDIRECT_URL?: string

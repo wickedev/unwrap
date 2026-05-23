@@ -1,5 +1,5 @@
 import { html, raw } from 'hono/html'
-import type { StoredSession } from '@unwrap/protocol'
+import type { StoredSession, VerificationResult, VerifyStep } from '@unwrap/protocol'
 import { Layout, type Renderable } from './layout'
 
 export function SessionDetailPage({
@@ -71,6 +71,25 @@ export function SessionDetailPage({
     </div>
 
     <div class="section">
+      <h2>Replay verification</h2>
+      <div class="card">
+        <div class="meta">
+          Re-execute the captured action trace in a real Chromium (Cloudflare Browser Rendering)
+          to confirm the selectors still work and capture screenshots at every step.
+        </div>
+        <div class="actions">
+          <button id="verify-btn" class="btn">
+            ${session.verification ? '↻ Re-run verification' : '▶ Verify on real browser'}
+          </button>
+        </div>
+        <div id="verify-status" class="muted" style="margin-top: 10px;"></div>
+        ${session.verification
+          ? html`${renderVerification(session)}`
+          : ''}
+      </div>
+    </div>
+
+    <div class="section">
       <h2>Actions captured</h2>
       <div class="card">
         ${summary.actions.length === 0
@@ -137,6 +156,31 @@ export function SessionDetailPage({
           btn.disabled = false;
         }
       });
+
+      const verifyBtn = document.getElementById('verify-btn');
+      const verifyStatus = document.getElementById('verify-status');
+      if (verifyBtn && verifyStatus) {
+        verifyBtn.addEventListener('click', async () => {
+          verifyBtn.disabled = true;
+          verifyStatus.textContent = 'Spawning Chromium and replaying the action trace… (10–60s)';
+          try {
+            const resp = await fetch('/api/sessions/' + sessionId + '/verify', { method: 'POST' });
+            const body = await resp.json();
+            if (!resp.ok) throw new Error(body.error || ('HTTP ' + resp.status));
+            verifyStatus.textContent = body.passed
+              ? 'Replay passed (' + body.passedSteps + '/' + body.totalSteps + ') — reloading view…'
+              : 'Replay finished — reloading view…';
+            location.reload();
+          } catch (e) {
+            verifyStatus.innerHTML = '';
+            const errEl = document.createElement('div');
+            errEl.className = 'error';
+            errEl.textContent = (e && e.message) || String(e);
+            verifyStatus.appendChild(errEl);
+            verifyBtn.disabled = false;
+          }
+        });
+      }
     })();
   `)}</script>`
 
@@ -146,6 +190,63 @@ export function SessionDetailPage({
     body,
     scripts,
   })
+}
+
+function renderVerification(session: StoredSession): Renderable {
+  const v = session.verification as VerificationResult
+  const status = v.errorBeforeStart
+    ? 'error'
+    : v.passed
+      ? 'pass'
+      : 'fail'
+  const badgeClass = status === 'pass' ? 'badge ok' : 'badge'
+  const badgeColor = status === 'pass' ? '#1f9d55' : '#d64545'
+  const screenshotBase = `/api/sessions/${session.id}/screenshots`
+
+  return html`
+    <div style="margin-top: 14px;">
+      <div class="meta" style="margin-bottom: 8px;">
+        <span class="${badgeClass}" style="color: ${badgeColor}; border-color: ${badgeColor};">
+          ${status === 'pass' ? '✓ PASS' : status === 'fail' ? '✗ FAIL' : '⚠ ERROR'}
+        </span>
+        · ${v.passedSteps}/${v.totalSteps} steps passed
+        · ${(v.durationMs / 1000).toFixed(1)}s
+        · ran ${relativeTime(v.ranAt)}
+        ${v.finalUrl ? html` · ended at <code style="font-size:11px;">${truncate(v.finalUrl, 60)}</code>` : ''}
+      </div>
+      ${v.errorBeforeStart
+        ? html`<div class="error">${v.errorBeforeStart}</div>`
+        : ''}
+      ${v.screenshotRefs.length > 0
+        ? html`<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin: 12px 0;">
+            ${v.screenshotRefs.map(
+              (ref, i) => html`<a href="${screenshotBase}/${ref}" target="_blank" style="display:block;">
+                <img src="${screenshotBase}/${ref}" alt="step ${i}" style="width:100%; height:auto; border-radius:6px; border:1px solid var(--border); background: #fff;" loading="lazy" />
+                <div class="meta" style="font-size:10px; margin-top:4px; text-align:center;">${i === 0 ? 'initial' : 'after step ' + (i - 1)}</div>
+              </a>`,
+            )}
+          </div>`
+        : ''}
+      ${v.steps.length > 0
+        ? html`<ol style="padding-left: 22px; margin: 12px 0 0 0;">
+            ${v.steps.map((s) => renderVerifyStep(s))}
+          </ol>`
+        : ''}
+    </div>
+  `
+}
+
+function renderVerifyStep(step: VerifyStep): Renderable {
+  const symbol = step.status === 'ok' ? '✓' : step.status === 'failed' ? '✗' : '·'
+  const color = step.status === 'ok' ? '#1f9d55' : step.status === 'failed' ? '#d64545' : 'var(--muted)'
+  return html`<li style="margin: 4px 0; color: var(--fg);">
+    <span style="color: ${color}; font-weight: 600;">${symbol}</span>
+    <code>${step.actionType}</code>
+    →
+    <code style="font-size: 11px;">${truncate(step.selector, 60)}</code>
+    <span class="meta" style="font-size: 11px;">· ${step.durationMs}ms</span>
+    ${step.message ? html`<div class="meta" style="margin-left: 18px; color: ${color};">${step.message}</div>` : ''}
+  </li>`
 }
 
 function truncate(s: string, n: number): string {

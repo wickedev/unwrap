@@ -61,6 +61,29 @@ export async function setGenerated(
   return record
 }
 
+export async function putScreenshot(
+  env: Env,
+  email: string,
+  sessionId: string,
+  ref: string,
+  pngBytes: ArrayBuffer,
+): Promise<void> {
+  if (!env.SESSIONS) throw new Error('SESSIONS KV namespace not configured')
+  await env.SESSIONS.put(`shot:${email}:${sessionId}:${ref}`, pngBytes, {
+    expirationTtl: TTL_SECONDS,
+  })
+}
+
+export async function getScreenshot(
+  env: Env,
+  email: string,
+  sessionId: string,
+  ref: string,
+): Promise<ArrayBuffer | null> {
+  if (!env.SESSIONS) return null
+  return env.SESSIONS.get(`shot:${email}:${sessionId}:${ref}`, 'arrayBuffer')
+}
+
 export async function listSessions(env: Env, email: string): Promise<SessionListItem[]> {
   if (!env.SESSIONS) return []
   const ids = await loadIndex(env, email)
@@ -119,6 +142,14 @@ async function loadIndex(env: Env, email: string): Promise<string[]> {
 }
 
 function toListItem(record: StoredSession): SessionListItem {
+  const v = record.verification
+  const verificationStatus = v
+    ? v.errorBeforeStart
+      ? 'error'
+      : v.passed
+        ? 'pass'
+        : 'fail'
+    : undefined
   return {
     id: record.id,
     host: record.summary.meta.host,
@@ -127,5 +158,6 @@ function toListItem(record: StoredSession): SessionListItem {
     durationMs: record.summary.meta.durationMs,
     uploadedAt: record.uploadedAt,
     hasGeneratedSpec: !!record.generated?.spec,
+    ...(verificationStatus ? { verificationStatus } : {}),
   }
 }

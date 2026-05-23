@@ -42,10 +42,17 @@ export function SessionsPage({ email, sessions }: { email: string; sessions: Ses
                       uploaded ${relativeTime(s.uploadedAt)} · duration ${formatDuration(s.durationMs)}
                     </div>
                   </div>
-                  <div>
+                  <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
+                    ${s.verificationStatus === 'pass'
+                      ? html`<span class="badge ok">✓ verified</span>`
+                      : s.verificationStatus === 'fail'
+                        ? html`<span class="badge" style="color:#d64545; border-color:#d64545;">✗ replay fail</span>`
+                        : s.verificationStatus === 'error'
+                          ? html`<span class="badge" style="color:#d64545; border-color:#d64545;">⚠ replay error</span>`
+                          : ''}
                     ${s.hasGeneratedSpec
-                      ? html`<span class="badge ok">spec ready</span>`
-                      : html`<span class="badge">not generated</span>`}
+                      ? html`<span class="badge ok">spec</span>`
+                      : html`<span class="badge">no spec</span>`}
                   </div>
                 </div>
               </div>

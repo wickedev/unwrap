@@ -21,6 +21,7 @@ import { issueToken, verifyToken } from './auth/jwt'
 import { clearSessionCookie, readEmail, setSessionCookie } from './auth/cookie'
 import { callGemini } from './gemini'
 import {
+  getScreenshot,
   getSession as getStoredSession,
   listSessions,
   newSessionId,
@@ -29,6 +30,7 @@ import {
 } from './storage/sessions'
 import { LoginPage, SessionsPage } from './pages/home'
 import { SessionDetailPage } from './pages/session'
+import { verifySession } from './verify'
 
 type Bindings = Env
 type Variables = { email: string }
@@ -190,6 +192,43 @@ app.post('/api/sessions/:id/generate', async (c) => {
     console.error('[unwrap-server] generate failed', message)
     return c.json(err('Generation failed', message), 502)
   }
+})
+
+app.post('/api/sessions/:id/verify', async (c) => {
+  const id = c.req.param('id')
+  const email = c.get('email')
+  const record = await getStoredSession(c.env, email, id)
+  if (!record) return c.json(err('Not found'), 404)
+  try {
+    const result = await verifySession(c.env, email, record)
+    record.verification = result
+    await putSession(c.env, record)
+    return c.json(result)
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    console.error('[unwrap-server] verify failed', message)
+    return c.json(err('Verification failed', message), 502)
+  }
+})
+
+app.get('/api/sessions/:id/screenshots/:ref', async (c) => {
+  const id = c.req.param('id')
+  const ref = c.req.param('ref')
+  const email = c.get('email')
+  if (!/^[A-Za-z0-9._-]+$/.test(ref)) return c.json(err('Invalid ref'), 400)
+  const record = await getStoredSession(c.env, email, id)
+  if (!record) return c.json(err('Not found'), 404)
+  if (!record.verification?.screenshotRefs.includes(ref)) {
+    return c.json(err('Screenshot not found'), 404)
+  }
+  const bytes = await getScreenshot(c.env, email, id, ref)
+  if (!bytes) return c.json(err('Screenshot expired'), 404)
+  return new Response(bytes, {
+    headers: {
+      'content-type': 'image/png',
+      'cache-control': 'private, max-age=86400',
+    },
+  })
 })
 
 // Legacy: keep /api/generate as a synchronous one-shot for extensions that

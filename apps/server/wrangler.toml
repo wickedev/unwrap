@@ -11,6 +11,12 @@ id = "fdda984b911c42afaedcca48ed5d73b9"
 binding = "SESSIONS"
 id = "b705fd7215b2446ba50f8af60af8128f"
 
+# Cloudflare Browser Rendering — gives the worker a real Chromium
+# instance to replay generated specs. Workers free plan = 10 browser-
+# minutes / day, which is enough for development.
+[browser]
+binding = "BROWSER"
+
 # Production secrets — set via:
 #   wrangler secret put GOOGLE_CLIENT_ID
 #   wrangler secret put GOOGLE_CLIENT_SECRET
