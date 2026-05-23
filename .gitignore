@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+.vite/
+*.tsbuildinfo
+
+# direnv local overrides
+.envrc.local
+.direnv/
+
+# project-isolated gh CLI config — contains OAuth tokens, must NEVER be committed
+.gh/

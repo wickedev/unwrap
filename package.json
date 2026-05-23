@@ -1,0 +1,32 @@
+{
+  "name": "unwrap",
+  "version": "0.1.0",
+  "description": "Chrome extension that captures sessions (network, screenshots, navigation, storage) for QA test generation and site reconstruction.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit"
+  },
+  "dependencies": {
+    "idb": "^8.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.2.0",
+    "@types/chrome": "^0.0.270",
+    "@types/node": "^25.9.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.7"
+  },
+  "overrides": {
+    "rollup": "^4.34.0",
+    "esbuild": "^0.25.0"
+  }
+}
