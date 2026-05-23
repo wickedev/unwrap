@@ -502,18 +502,22 @@ function UploadRow({
     )
   }
 
-  // No upload state yet — old session, or signed out at stop time
+  // No upload state yet. If signed in, the background is about to (or
+  // already did) queue an auto-upload — show a soft pending hint; the
+  // session card refreshes every ~1.5s and will flip to 'pending' shortly.
+  if (aiReady) {
+    return (
+      <div className="flex items-center gap-2 rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-muted)] px-2.5 py-1.5 text-[11px] text-[var(--color-muted-foreground)]">
+        <Loader2 className="size-3 animate-spin" />
+        Queuing upload…
+      </div>
+    )
+  }
+
   return (
     <div className="flex items-center gap-2 rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-muted)] px-2.5 py-1.5 text-[11px] text-[var(--color-muted-foreground)]">
       <CloudUpload className="size-3" />
-      <span className="flex-1">
-        {aiReady ? 'Not uploaded yet.' : 'Sign in via Settings to enable auto-upload.'}
-      </span>
-      {aiReady && (
-        <Button size="sm" onClick={onUpload} disabled={busy}>
-          <CloudUpload /> Upload now
-        </Button>
-      )}
+      <span>Sign in via Settings to enable auto-upload.</span>
     </div>
   )
 }

@@ -56,8 +56,11 @@ async function handle(msg: RuntimeMessage, sender: chrome.runtime.MessageSender)
       return startSession(msg.tabId)
     case 'stop_session':
       return stopSession(msg.sessionId, { autoUpload: true })
-    case 'list_sessions':
-      return listSessions()
+    case 'list_sessions': {
+      const list = await listSessions()
+      void backfillUnuploaded(list)
+      return list
+    }
     case 'get_session':
       return getSession(msg.sessionId)
     case 'delete_session':
@@ -107,8 +110,11 @@ async function handle(msg: RuntimeMessage, sender: chrome.runtime.MessageSender)
     }
     case 'get_settings':
       return getSettings()
-    case 'set_settings':
-      return setSettings(msg.patch)
+    case 'set_settings': {
+      const next = await setSettings(msg.patch)
+      void backfillUnuploaded()
+      return next
+    }
     case 'upload_session':
       return autoUpload(msg.sessionId, { openTab: true, force: true })
     default:
@@ -200,6 +206,25 @@ async function markStopped(sessionId: string): Promise<SessionMeta | undefined> 
 }
 
 const uploadsInFlight = new Set<string>()
+
+// Walks every locally-stored session and queues an auto-upload for the
+// ones that are stopped but haven't successfully uploaded yet. Triggered
+// after sign-in (settings change) and on every side-panel refresh.
+async function backfillUnuploaded(preloaded?: SessionMeta[]): Promise<void> {
+  const settings = await getSettings()
+  if (!settings.serverUrl || !authIsValid(settings.auth)) return
+  const all = preloaded ?? (await listSessions())
+  for (const s of all) {
+    if (s.status !== 'stopped') continue
+    if (s.upload?.state === 'done' || s.upload?.state === 'pending') continue
+    if (uploadsInFlight.has(s.id)) continue
+    void autoUpload(s.id, { openTab: false })
+  }
+}
+
+chrome.runtime.onStartup?.addListener(() => {
+  void backfillUnuploaded()
+})
 
 interface AutoUploadOptions {
   openTab?: boolean
