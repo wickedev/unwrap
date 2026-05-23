@@ -7,6 +7,10 @@ compatibility_flags = ["nodejs_compat"]
 binding = "OAUTH_STATE"
 id = "fdda984b911c42afaedcca48ed5d73b9"
 
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "b705fd7215b2446ba50f8af60af8128f"
+
 # Production secrets — set via:
 #   wrangler secret put GOOGLE_CLIENT_ID
 #   wrangler secret put GOOGLE_CLIENT_SECRET

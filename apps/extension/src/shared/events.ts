@@ -266,4 +266,4 @@ export type RuntimeMessage =
   | { kind: 'action_event'; event: ActionEvent }
   | { kind: 'get_settings' }
   | { kind: 'set_settings'; patch: Partial<import('./settings').UnwrapSettings> }
-  | { kind: 'generate_ai_test'; sessionId: string }
+  | { kind: 'upload_session'; sessionId: string }

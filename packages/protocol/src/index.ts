@@ -88,3 +88,48 @@ export interface MeResponse {
   email: string
   expiresAt: number
 }
+
+// ---------- Session upload + retrieval ----------
+
+export interface UploadSessionRequest {
+  // Local extension-side id, preserved for cross-referencing
+  clientSessionId: string
+  summary: SessionSummary
+  fallbackSpec: string
+  screenshots: ScreenshotInline[]
+}
+
+export interface UploadSessionResponse {
+  id: string
+  url: string
+}
+
+export interface SessionListItem {
+  id: string
+  host: string
+  startUrl: string
+  startedAt: string
+  durationMs: number
+  uploadedAt: number
+  hasGeneratedSpec: boolean
+}
+
+export interface SessionListResponse {
+  sessions: SessionListItem[]
+}
+
+export interface StoredSession {
+  id: string
+  email: string
+  uploadedAt: number
+  clientSessionId: string
+  summary: SessionSummary
+  fallbackSpec: string
+  screenshots: ScreenshotInline[]
+  generated?: GenerateResponse & { generatedAt: number }
+}
+
+export interface GenerateForStoredSessionResponse extends GenerateResponse {
+  sessionId: string
+  generatedAt: number
+}

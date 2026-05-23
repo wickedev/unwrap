@@ -102,11 +102,11 @@ export function App() {
     }
   }
 
-  const generateAi = async (sessionId: string) => {
+  const uploadAndOpen = async (sessionId: string) => {
     setBusy(true)
     setError(null)
     try {
-      await send({ kind: 'generate_ai_test', sessionId })
+      await send({ kind: 'upload_session', sessionId })
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -197,7 +197,7 @@ export function App() {
               onExportHar={() => exportSession(s.id, 'har')}
               onExportJson={() => exportSession(s.id, 'json')}
               onExportPlaywright={() => exportSession(s.id, 'playwright')}
-              onGenerateAi={() => generateAi(s.id)}
+              onUpload={() => uploadAndOpen(s.id)}
               onDelete={() => remove(s.id)}
             />
           ))
@@ -275,7 +275,7 @@ interface CardProps {
   onExportHar: () => void
   onExportJson: () => void
   onExportPlaywright: () => void
-  onGenerateAi: () => void
+  onUpload: () => void
   onDelete: () => void
 }
 
@@ -288,7 +288,7 @@ function SessionCard({
   onExportHar,
   onExportJson,
   onExportPlaywright,
-  onGenerateAi,
+  onUpload,
   onDelete,
 }: CardProps) {
   const started = new Date(session.startedAt)
@@ -337,11 +337,11 @@ function SessionCard({
         )}
         <button
           className="primary"
-          onClick={onGenerateAi}
+          onClick={onUpload}
           disabled={busy || !aiReady}
-          title={aiReady ? 'Generate enriched Playwright spec via Gemini' : 'Sign in with Google in Settings first'}
+          title={aiReady ? 'Upload this session to the server and open it in a new tab' : 'Sign in with Google in Settings first'}
         >
-          ✨ Generate AI test
+          ⤴ Upload & open
         </button>
         <button onClick={onExportPlaywright}>Export Playwright</button>
         <button onClick={onExportHar}>Export HAR</button>

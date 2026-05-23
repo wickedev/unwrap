@@ -10,7 +10,7 @@ import {
 import { TabRecorder } from './recorder'
 import { exportSessionAsHar, exportSessionAsJson, exportSessionAsPlaywright } from './export'
 import { captureStorageState } from './storage-state'
-import { generateAiTest } from './llm'
+import { uploadSessionToServer } from './llm'
 import { getSettings, setSettings } from '@/shared/settings'
 
 const recorders = new Map<number, TabRecorder>()
@@ -106,8 +106,11 @@ async function handle(msg: RuntimeMessage, sender: chrome.runtime.MessageSender)
       return getSettings()
     case 'set_settings':
       return setSettings(msg.patch)
-    case 'generate_ai_test':
-      return generateAiTest(msg.sessionId)
+    case 'upload_session': {
+      const result = await uploadSessionToServer(msg.sessionId)
+      await chrome.tabs.create({ url: result.url })
+      return result
+    }
     default:
       throw new Error(`unknown message: ${(msg as { kind: string }).kind}`)
   }

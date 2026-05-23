@@ -6,20 +6,22 @@ const USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo'
 
 const SCOPES = ['openid', 'email', 'profile']
 
+export type OAuthMode = { type: 'extension'; extensionRedirect: string } | { type: 'web'; returnTo: string }
+
 export interface OAuthStateRecord {
-  extensionRedirect: string
+  mode: OAuthMode
   createdAt: number
 }
 
 export async function startGoogleOAuth(
   env: Env,
   serverCallback: string,
-  extensionRedirect: string,
+  mode: OAuthMode,
 ): Promise<{ authUrl: string; state: string }> {
   if (!env.OAUTH_STATE) throw new Error('OAUTH_STATE KV namespace not configured')
 
   const state = crypto.randomUUID()
-  const record: OAuthStateRecord = { extensionRedirect, createdAt: Date.now() }
+  const record: OAuthStateRecord = { mode, createdAt: Date.now() }
   await env.OAUTH_STATE.put(`state:${state}`, JSON.stringify(record), { expirationTtl: 600 })
 
   const url = new URL(AUTHORIZE_URL)
