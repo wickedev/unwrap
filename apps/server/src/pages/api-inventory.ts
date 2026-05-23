@@ -40,6 +40,18 @@ export function ApiInventoryPage({
         ${kpi('Hosts', new Set(groups.map((g) => g.hostname)).size, 'var(--muted)')}
       </div>
 
+      ${calls.length > 0
+        ? html`<div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+            <div style="min-width: 0;">
+              <strong style="font-size: 13px;">Mock server</strong>
+              <div class="meta" style="font-size: 11px; margin-top: 2px;">
+                Single-file Node.js script. No deps — just run <code>node mock-server.mjs</code> and point your dev frontend at <code>http://localhost:3000</code>. CORS open. Path params matched but ignored (same canned response per endpoint).
+              </div>
+            </div>
+            <a class="btn" href="/sessions/${session.id}/api/mock" download>↓ Download mock server</a>
+          </div>`
+        : ''}
+
       ${calls.length === 0
         ? html`<div class="card"><div class="muted">No API calls captured. The extension only sends JSON / GraphQL / mutation traffic to keep uploads small.</div></div>`
         : ''}
