@@ -32,7 +32,9 @@ import {
 } from './storage/sessions'
 import { LoginPage, SessionsPage } from './pages/home'
 import { SessionDetailPage } from './pages/session'
+import { ComparePage } from './pages/compare'
 import { verifySession } from './verify'
+import { diffSessions } from './sessiondiff'
 
 type Bindings = Env
 type Variables = { email: string }
@@ -247,6 +249,21 @@ app.post('/api/sessions/:id/verify', async (c) => {
   }
 })
 
+app.get('/api/sessions/:id/compare/:otherId', async (c) => {
+  // URL convention: /sessions/<current>/compare/<baseline>. The route
+  // exists alongside the human page and uses the same semantics.
+  const email = c.get('email')
+  const currentId = c.req.param('id')
+  const baselineId = c.req.param('otherId')
+  if (currentId === baselineId) return c.json(err('Cannot compare a session to itself'), 400)
+  const [baseline, current] = await Promise.all([
+    getStoredSession(c.env, email, baselineId),
+    getStoredSession(c.env, email, currentId),
+  ])
+  if (!baseline || !current) return c.json(err('One or both sessions not found'), 404)
+  return c.json(diffSessions(baseline, current))
+})
+
 app.get('/api/sessions/:id/screenshots/:ref', async (c) => {
   const id = c.req.param('id')
   const ref = c.req.param('ref')
@@ -329,9 +346,29 @@ app.get('/sessions', async (c) => {
 app.get('/sessions/:id', async (c) => {
   const email = await readEmail(c)
   if (!email) return c.redirect('/', 302)
-  const record = await getStoredSession(c.env, email, c.req.param('id'))
+  const id = c.req.param('id')
+  const record = await getStoredSession(c.env, email, id)
   if (!record) return c.html(LoginPage(), 404)
-  return c.html(SessionDetailPage({ email, session: record }))
+  // List of other sessions sharing the same host (for the Compare dropdown)
+  const allSessions = await listSessions(c.env, email)
+  const otherSameHost = allSessions
+    .filter((s) => s.id !== id && s.host === record.summary.meta.host)
+    .slice(0, 10)
+  return c.html(SessionDetailPage({ email, session: record, otherSameHost }))
+})
+
+app.get('/sessions/:id/compare/:otherId', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const id = c.req.param('id')
+  const otherId = c.req.param('otherId')
+  if (id === otherId) return c.redirect(`/sessions/${id}`, 302)
+  const [a, b] = await Promise.all([
+    getStoredSession(c.env, email, otherId),
+    getStoredSession(c.env, email, id),
+  ])
+  if (!a || !b) return c.html(LoginPage(), 404)
+  return c.html(ComparePage({ email, diff: diffSessions(a, b) }))
 })
 
 // ---------- helpers ----------

@@ -1,14 +1,16 @@
 import { html, raw } from 'hono/html'
-import type { StoredSession, VerificationResult, VerifyStep, VisualDiff } from '@unwrap/protocol'
+import type { SessionListItem, StoredSession, VerificationResult, VerifyStep, VisualDiff } from '@unwrap/protocol'
 import { Layout, type Renderable } from './layout'
 import { renderTimeline } from './timeline'
 
 export function SessionDetailPage({
   email,
   session,
+  otherSameHost = [],
 }: {
   email: string
   session: StoredSession
+  otherSameHost?: SessionListItem[]
 }): Renderable {
   const { summary, generated } = session
   const counts = Object.entries(summary.meta.counts ?? {}).filter(([, v]) => v && v > 0)
@@ -36,6 +38,14 @@ export function SessionDetailPage({
           <button id="generate-btn" class="btn">${generated ? '↻ Regenerate' : '✨ Generate Playwright spec'}</button>
           ${generated
             ? html`<a class="btn secondary" id="download-btn" href="#">Download .spec.ts</a>`
+            : ''}
+          ${otherSameHost.length > 0
+            ? html`<select id="compare-select" class="btn secondary" style="padding: 6px 8px;">
+                <option value="">Compare with…</option>
+                ${otherSameHost.map(
+                  (s) => html`<option value="${s.id}">${new Date(s.uploadedAt).toLocaleString()} · ${s.id.slice(0, 8)}</option>`,
+                )}
+              </select>`
             : ''}
         </div>
         <div id="status" class="muted" style="margin-top: 10px;"></div>
@@ -166,6 +176,15 @@ export function SessionDetailPage({
             verifyStatus.appendChild(errEl);
             verifyBtn.disabled = false;
           }
+        });
+      }
+
+      const compareSelect = document.getElementById('compare-select');
+      if (compareSelect) {
+        compareSelect.addEventListener('change', (e) => {
+          const otherId = e.target.value;
+          if (!otherId) return;
+          location.href = '/sessions/' + sessionId + '/compare/' + otherId;
         });
       }
     })();
