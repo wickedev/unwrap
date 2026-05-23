@@ -11,10 +11,21 @@
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@radix-ui/react-collapsible": "^1.1.12",
+    "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-separator": "^1.1.8",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@tailwindcss/vite": "^4.3.0",
     "@unwrap/protocol": "workspace:*",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "idb": "^8.0.0",
+    "lucide-react": "^1.16.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss": "^4.3.0",
+    "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.2.0",
