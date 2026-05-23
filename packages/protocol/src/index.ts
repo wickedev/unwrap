@@ -25,6 +25,25 @@ export interface SessionSummary {
   // verbs), with request + response bodies up to a per-call and total cap.
   // Powers the /sessions/:id/api inventory page.
   apiCalls?: ApiCall[]
+  // Captured HTML / CSS / JS responses plus URL-only references for
+  // image/font/binary assets. Powers the /sessions/:id/static.zip
+  // mirror download.
+  staticAssets?: StaticAsset[]
+}
+
+export interface StaticAsset {
+  url: string
+  status: number
+  mimeType: string
+  // Bytes-on-the-wire (from response headers / blob size at capture).
+  size: number
+  // Text body for HTML / CSS / JS / SVG (truncated to ~200KB). Absent
+  // when the asset was filtered out by mime (image/font/binary) or by
+  // the per-session size budget.
+  body?: string
+  // True when this row is a URL-only reference because the bytes weren't
+  // captured (binary assets like images/fonts).
+  urlOnly?: boolean
 }
 
 export interface ApiCall {

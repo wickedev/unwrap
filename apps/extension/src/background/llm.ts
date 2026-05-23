@@ -5,6 +5,7 @@ import { generatePlaywrightScript } from './playwright'
 import { pickScreenshotsForLlm, pickScreenshotsForVerify } from './screenshots'
 import { summarizeSession } from './summarize'
 import { collectApiCalls } from './api-calls'
+import { collectStaticAssets } from './static-assets'
 
 export interface UploadResult {
   id: string
@@ -23,6 +24,7 @@ export async function uploadSessionToServer(sessionId: string): Promise<UploadRe
   // pages on the server. Done outside summarizeSession because it has to
   // read blob data (async + I/O).
   summary.apiCalls = await collectApiCalls(sessionId, events)
+  summary.staticAssets = await collectStaticAssets(events)
   const fallbackSpec = generatePlaywrightScript(meta, events)
   const screenshots = await pickScreenshotsForLlm(sessionId, events, 2)
   const verifyScreenshots = await pickScreenshotsForVerify(sessionId, events)

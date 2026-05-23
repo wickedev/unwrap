@@ -52,6 +52,18 @@ export function ApiInventoryPage({
           </div>`
         : ''}
 
+      ${(session.summary.staticAssets?.length ?? 0) > 0
+        ? html`<div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+            <div style="min-width: 0;">
+              <strong style="font-size: 13px;">Static mirror</strong>
+              <div class="meta" style="font-size: 11px; margin-top: 2px;">
+                ${session.summary.staticAssets!.length} captured asset${session.summary.staticAssets!.length === 1 ? '' : 's'} (HTML / CSS / JS / SVG) bundled into a zip preserving path structure. Binary refs (image / font) listed in <code>MIRROR.md</code>. Pair with the mock server above for a fully local clone.
+              </div>
+            </div>
+            <a class="btn" href="/sessions/${session.id}/static.zip" download>↓ Download static mirror</a>
+          </div>`
+        : ''}
+
       ${calls.length === 0
         ? html`<div class="card"><div class="muted">No API calls captured. The extension only sends JSON / GraphQL / mutation traffic to keep uploads small.</div></div>`
         : ''}

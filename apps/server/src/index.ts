@@ -36,6 +36,7 @@ import { SessionDetailPage } from './pages/session'
 import { ComparePage } from './pages/compare'
 import { ApiInventoryPage } from './pages/api-inventory'
 import { generateMockServer } from './mock-export'
+import { buildStaticMirrorZip } from './static-mirror'
 import { verifySession } from './verify'
 import { diffSessions, summarizeRegression } from './sessiondiff'
 import { computeCrossSessionVisualDiff } from './visualcrossdiff'
@@ -446,6 +447,21 @@ app.get('/sessions/:id/api/mock', async (c) => {
   return new Response(body, {
     headers: {
       'content-type': 'application/javascript; charset=utf-8',
+      'content-disposition': `attachment; filename="${filename}"`,
+      'cache-control': 'private, no-store',
+    },
+  })
+})
+
+app.get('/sessions/:id/static.zip', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const record = await getStoredSession(c.env, email, c.req.param('id'))
+  if (!record) return c.json(err('Not found'), 404)
+  const { filename, bytes } = buildStaticMirrorZip(record)
+  return new Response(bytes, {
+    headers: {
+      'content-type': 'application/zip',
       'content-disposition': `attachment; filename="${filename}"`,
       'cache-control': 'private, no-store',
     },

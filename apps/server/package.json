@@ -14,6 +14,7 @@
   "dependencies": {
     "@cloudflare/puppeteer": "^1.1.0",
     "@unwrap/protocol": "workspace:*",
+    "fflate": "^0.8.3",
     "hono": "^4.6.13",
     "pixelmatch": "^7.2.0",
     "upng-js": "^2.1.0"
