@@ -4,6 +4,7 @@ import { authedFetch } from './auth'
 import { generatePlaywrightScript } from './playwright'
 import { pickScreenshotsForLlm, pickScreenshotsForVerify } from './screenshots'
 import { summarizeSession } from './summarize'
+import { collectApiCalls } from './api-calls'
 
 export interface UploadResult {
   id: string
@@ -18,6 +19,10 @@ export async function uploadSessionToServer(sessionId: string): Promise<UploadRe
   const events = await listEvents(sessionId)
 
   const summary = summarizeSession(meta, events)
+  // Augment the summary with API calls + bodies for the reverse-engineering
+  // pages on the server. Done outside summarizeSession because it has to
+  // read blob data (async + I/O).
+  summary.apiCalls = await collectApiCalls(sessionId, events)
   const fallbackSpec = generatePlaywrightScript(meta, events)
   const screenshots = await pickScreenshotsForLlm(sessionId, events, 2)
   const verifyScreenshots = await pickScreenshotsForVerify(sessionId, events)

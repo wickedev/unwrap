@@ -21,6 +21,37 @@ export interface SessionSummary {
   significantResponses: { url: string; status: number; mimeType: string; ts?: number; method?: string }[]
   axTreeSummary: { url: string; nodeCount: number }[]
   domSnapshotSummary: { url: string; sizeBytes: number }[]
+  // Captured HTTP requests filtered to API-shaped traffic (JSON/GraphQL/REST
+  // verbs), with request + response bodies up to a per-call and total cap.
+  // Powers the /sessions/:id/api inventory page.
+  apiCalls?: ApiCall[]
+}
+
+export interface ApiCall {
+  ts: number
+  method: string
+  url: string
+  // Headers as captured, already redacted on the extension side.
+  requestHeaders?: Record<string, string>
+  // Raw request body (post data) — typically JSON, may be form-encoded.
+  // Truncated to ~50KB.
+  requestBody?: string
+  status: number
+  responseMimeType: string
+  // Raw response body (UTF-8 decoded). Truncated to ~50KB; bodies that
+  // aren't textual (image/font/binary) are dropped.
+  responseBody?: string
+  // Bytes-on-the-wire for the response body. Set even when responseBody
+  // is dropped or truncated, so the UI can show the real size.
+  responseSize?: number
+  responseHeaders?: Record<string, string>
+  // Quick GraphQL identification — operationName / operationType
+  // extracted from the request body's JSON if present.
+  graphql?: {
+    operationType?: 'query' | 'mutation' | 'subscription'
+    operationName?: string
+    queryHash?: string
+  }
 }
 
 export interface SerializedAction {

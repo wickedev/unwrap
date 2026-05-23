@@ -34,6 +34,7 @@ import {
 import { LoginPage, SessionsPage } from './pages/home'
 import { SessionDetailPage } from './pages/session'
 import { ComparePage } from './pages/compare'
+import { ApiInventoryPage } from './pages/api-inventory'
 import { verifySession } from './verify'
 import { diffSessions, summarizeRegression } from './sessiondiff'
 import { computeCrossSessionVisualDiff } from './visualcrossdiff'
@@ -425,6 +426,14 @@ app.get('/sessions/:id', async (c) => {
     .filter((s) => s.id !== id && s.host === record.summary.meta.host)
     .slice(0, 10)
   return c.html(SessionDetailPage({ email, session: record, otherSameHost }))
+})
+
+app.get('/sessions/:id/api', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const record = await getStoredSession(c.env, email, c.req.param('id'))
+  if (!record) return c.html(LoginPage(), 404)
+  return c.html(ApiInventoryPage({ email, session: record }))
 })
 
 app.get('/sessions/:id/compare/:otherId', async (c) => {

@@ -63,6 +63,9 @@ export function SessionDetailPage({
                 )}
               </select>`
             : ''}
+          ${(session.summary.apiCalls?.length ?? 0) > 0
+            ? html`<a class="btn secondary" href="/sessions/${session.id}/api">⛁ API inventory (${session.summary.apiCalls!.length})</a>`
+            : ''}
         </div>
         <div id="status" class="muted" style="margin-top: 10px;"></div>
       </div>
