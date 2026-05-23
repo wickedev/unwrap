@@ -8,7 +8,8 @@ import {
   putSession,
 } from '@/shared/storage'
 import { TabRecorder } from './recorder'
-import { exportSessionAsHar, exportSessionAsJson } from './export'
+import { exportSessionAsHar, exportSessionAsJson, exportSessionAsPlaywright } from './export'
+import { captureStorageState } from './storage-state'
 
 const recorders = new Map<number, TabRecorder>()
 
@@ -22,10 +23,10 @@ chrome.action.onClicked.addListener((tab) => {
   }
 })
 
-chrome.runtime.onMessage.addListener((msg: RuntimeMessage, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg: RuntimeMessage, sender, sendResponse) => {
   ;(async () => {
     try {
-      const result = await handle(msg)
+      const result = await handle(msg, sender)
       sendResponse({ ok: true, result })
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
@@ -44,7 +45,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   }
 })
 
-async function handle(msg: RuntimeMessage): Promise<unknown> {
+async function handle(msg: RuntimeMessage, sender: chrome.runtime.MessageSender): Promise<unknown> {
   switch (msg.kind) {
     case 'start_session':
       return startSession(msg.tabId)
@@ -57,13 +58,21 @@ async function handle(msg: RuntimeMessage): Promise<unknown> {
     case 'delete_session':
       return deleteSession(msg.sessionId)
     case 'export_session':
-      return msg.format === 'har'
-        ? exportSessionAsHar(msg.sessionId)
-        : exportSessionAsJson(msg.sessionId)
+      switch (msg.format) {
+        case 'har':
+          return exportSessionAsHar(msg.sessionId)
+        case 'playwright':
+          return exportSessionAsPlaywright(msg.sessionId)
+        case 'json':
+        default:
+          return exportSessionAsJson(msg.sessionId)
+      }
     case 'capture_storage_state':
-      return captureStorageState(msg.sessionId)
-    case 'content_storage_state':
-      return appendEvent({
+      return captureStorageState(msg.sessionId, msg.trigger ?? 'manual')
+    case 'content_storage_state': {
+      const meta = await getSession(msg.sessionId)
+      if (!meta) return
+      await appendEvent({
         type: 'storage_state',
         sessionId: msg.sessionId,
         ts: Date.now(),
@@ -71,10 +80,36 @@ async function handle(msg: RuntimeMessage): Promise<unknown> {
         cookies: await chrome.cookies.getAll({ url: msg.origin }),
         localStorage: msg.local,
         sessionStorage: msg.session,
+        trigger: msg.trigger,
       })
+      const recorder = findRecorder(msg.sessionId)
+      if (recorder) await recorder.bumpCounts({ storageStates: 1 })
+      return
+    }
+    case 'is_recording': {
+      const tabId = msg.tabId ?? sender.tab?.id
+      if (tabId == null) return { recording: false }
+      const rec = recorders.get(tabId)
+      return rec ? { recording: true, sessionId: rec.sessionId } : { recording: false }
+    }
+    case 'action_event': {
+      const event = msg.event
+      const recorder = findRecorder(event.sessionId)
+      if (!recorder) return
+      await appendEvent(event)
+      await recorder.bumpCounts({ actions: 1 })
+      return
+    }
     default:
       throw new Error(`unknown message: ${(msg as { kind: string }).kind}`)
   }
+}
+
+function findRecorder(sessionId: string): TabRecorder | undefined {
+  for (const r of recorders.values()) {
+    if (r.sessionId === sessionId) return r
+  }
+  return undefined
 }
 
 async function startSession(tabId: number): Promise<SessionMeta> {
@@ -95,7 +130,7 @@ async function startSession(tabId: number): Promise<SessionMeta> {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     locale: navigator.language,
     status: 'recording',
-    counts: { requests: 0, responses: 0, screenshots: 0, navigations: 0 },
+    counts: { requests: 0, responses: 0, screenshots: 0, navigations: 0, actions: 0, storageStates: 0 },
   }
   await putSession(meta)
   const recorder = new TabRecorder(sessionId, tabId)
@@ -134,32 +169,3 @@ async function markStopped(sessionId: string): Promise<SessionMeta | undefined> 
   return meta
 }
 
-async function captureStorageState(sessionId: string): Promise<void> {
-  const meta = await getSession(sessionId)
-  if (!meta) throw new Error('session not found')
-  try {
-    await chrome.scripting.executeScript({
-      target: { tabId: meta.tabId },
-      func: (sid: string) => {
-        const dump = (s: Storage) => {
-          const out: Record<string, string> = {}
-          for (let i = 0; i < s.length; i++) {
-            const k = s.key(i)
-            if (k != null) out[k] = s.getItem(k) ?? ''
-          }
-          return out
-        }
-        chrome.runtime.sendMessage({
-          kind: 'content_storage_state',
-          sessionId: sid,
-          origin: location.origin,
-          local: dump(localStorage),
-          session: dump(sessionStorage),
-        })
-      },
-      args: [sessionId],
-    })
-  } catch (e) {
-    console.warn('[unwrap] captureStorageState failed', e)
-  }
-}

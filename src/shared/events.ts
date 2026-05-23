@@ -19,6 +19,8 @@ export interface SessionMeta {
     responses: number
     screenshots: number
     navigations: number
+    actions: number
+    storageStates: number
   }
 }
 
@@ -31,6 +33,11 @@ export type SessionEvent =
   | ConsoleEvent
   | ExceptionEvent
   | StorageStateEvent
+  | ClickEvent
+  | InputEvent
+  | ChangeEvent
+  | SubmitEvent
+  | KeyEvent
 
 interface BaseEvent {
   sessionId: string
@@ -105,7 +112,77 @@ export interface StorageStateEvent extends BaseEvent {
   cookies: chrome.cookies.Cookie[]
   localStorage: Record<string, string>
   sessionStorage: Record<string, string>
+  trigger: 'manual' | 'session_start' | 'navigation'
 }
+
+export interface SelectorSet {
+  testId?: string
+  role?: string
+  roleName?: string
+  text?: string
+  label?: string
+  placeholder?: string
+  css?: string
+  xpath?: string
+  piercedCss?: string[]
+}
+
+export interface ElementInfo {
+  tag: string
+  type?: string
+  name?: string
+  inputType?: string
+  isContentEditable?: boolean
+  visibleText?: string
+  href?: string
+}
+
+export interface ClickEvent extends BaseEvent {
+  type: 'click'
+  selectors: SelectorSet
+  element: ElementInfo
+  button: number
+  modifiers: { alt: boolean; ctrl: boolean; meta: boolean; shift: boolean }
+  url: string
+}
+
+export interface InputEvent extends BaseEvent {
+  type: 'input'
+  selectors: SelectorSet
+  element: ElementInfo
+  redacted: boolean
+  value?: string
+  valueLength: number
+  url: string
+}
+
+export interface ChangeEvent extends BaseEvent {
+  type: 'change'
+  selectors: SelectorSet
+  element: ElementInfo
+  redacted: boolean
+  value?: string
+  checked?: boolean
+  url: string
+}
+
+export interface SubmitEvent extends BaseEvent {
+  type: 'submit'
+  selectors: SelectorSet
+  formAction?: string
+  url: string
+}
+
+export interface KeyEvent extends BaseEvent {
+  type: 'key'
+  key: string
+  code: string
+  selectors?: SelectorSet
+  modifiers: { alt: boolean; ctrl: boolean; meta: boolean; shift: boolean }
+  url: string
+}
+
+export type ActionEvent = ClickEvent | InputEvent | ChangeEvent | SubmitEvent | KeyEvent
 
 export type RuntimeMessage =
   | { kind: 'start_session'; tabId: number }
@@ -113,6 +190,15 @@ export type RuntimeMessage =
   | { kind: 'list_sessions' }
   | { kind: 'get_session'; sessionId: string }
   | { kind: 'delete_session'; sessionId: string }
-  | { kind: 'export_session'; sessionId: string; format: 'har' | 'json' }
-  | { kind: 'capture_storage_state'; sessionId: string }
-  | { kind: 'content_storage_state'; sessionId: string; origin: string; local: Record<string, string>; session: Record<string, string> }
+  | { kind: 'export_session'; sessionId: string; format: 'har' | 'json' | 'playwright' }
+  | { kind: 'capture_storage_state'; sessionId: string; trigger?: 'manual' | 'session_start' | 'navigation' }
+  | {
+      kind: 'content_storage_state'
+      sessionId: string
+      origin: string
+      local: Record<string, string>
+      session: Record<string, string>
+      trigger: 'manual' | 'session_start' | 'navigation'
+    }
+  | { kind: 'is_recording'; tabId?: number }
+  | { kind: 'action_event'; event: ActionEvent }

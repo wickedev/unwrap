@@ -84,7 +84,7 @@ export function App() {
     }
   }
 
-  const exportSession = async (sessionId: string, format: 'har' | 'json') => {
+  const exportSession = async (sessionId: string, format: 'har' | 'json' | 'playwright') => {
     try {
       await send({ kind: 'export_session', sessionId, format })
     } catch (e) {
@@ -140,6 +140,7 @@ export function App() {
               onCaptureStorage={() => captureStorage(s.id)}
               onExportHar={() => exportSession(s.id, 'har')}
               onExportJson={() => exportSession(s.id, 'json')}
+              onExportPlaywright={() => exportSession(s.id, 'playwright')}
               onDelete={() => remove(s.id)}
             />
           ))
@@ -155,10 +156,11 @@ interface CardProps {
   onCaptureStorage: () => void
   onExportHar: () => void
   onExportJson: () => void
+  onExportPlaywright: () => void
   onDelete: () => void
 }
 
-function SessionCard({ session, onStop, onCaptureStorage, onExportHar, onExportJson, onDelete }: CardProps) {
+function SessionCard({ session, onStop, onCaptureStorage, onExportHar, onExportJson, onExportPlaywright, onDelete }: CardProps) {
   const started = new Date(session.startedAt)
   const duration = (session.endedAt ?? Date.now()) - session.startedAt
   return (
@@ -172,6 +174,9 @@ function SessionCard({ session, onStop, onCaptureStorage, onExportHar, onExportJ
           <span>{session.counts.navigations}</span>nav
         </div>
         <div>
+          <span>{session.counts.actions}</span>act
+        </div>
+        <div>
           <span>{session.counts.requests}</span>req
         </div>
         <div>
@@ -179,6 +184,9 @@ function SessionCard({ session, onStop, onCaptureStorage, onExportHar, onExportJ
         </div>
         <div>
           <span>{session.counts.screenshots}</span>shot
+        </div>
+        <div>
+          <span>{session.counts.storageStates}</span>store
         </div>
       </div>
       <div className="meta">
@@ -196,6 +204,7 @@ function SessionCard({ session, onStop, onCaptureStorage, onExportHar, onExportJ
             <button onClick={onCaptureStorage}>Capture storage</button>
           </>
         )}
+        <button onClick={onExportPlaywright}>Export Playwright</button>
         <button onClick={onExportHar}>Export HAR</button>
         <button onClick={onExportJson}>Export JSON</button>
         <button className="danger" onClick={onDelete}>Delete</button>

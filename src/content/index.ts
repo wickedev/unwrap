@@ -1,11 +1,44 @@
-// M1: content script is minimal — storageState capture is invoked from
-// background via chrome.scripting.executeScript, so we don't keep a long-lived
-// listener here yet. This file exists so the manifest content_script entry
-// points to a real bundle and we have a hook for later milestones
-// (user interaction recording, DOM snapshots, etc).
+import type { RuntimeMessage } from '@/shared/events'
+import { ContentRecorder } from './recorder'
 
-export {}
+let recorder: ContentRecorder | null = null
 
-if (window.top === window) {
-  console.debug('[unwrap] content script loaded:', location.href)
+async function bootstrap(): Promise<void> {
+  try {
+    const reply = (await chrome.runtime.sendMessage({ kind: 'is_recording' } satisfies RuntimeMessage)) as
+      | { ok: true; result: { recording: boolean; sessionId?: string } }
+      | { ok: false; error: string }
+    if (reply?.ok && reply.result.recording && reply.result.sessionId) {
+      attach(reply.result.sessionId)
+    }
+  } catch {
+    // background not ready yet, ignore
+  }
 }
+
+function attach(sessionId: string): void {
+  if (recorder) {
+    recorder.setSession(sessionId)
+    return
+  }
+  recorder = new ContentRecorder(sessionId)
+  recorder.start()
+}
+
+function detach(): void {
+  recorder?.stop()
+  recorder = null
+}
+
+chrome.runtime.onMessage.addListener((msg: { kind: string; sessionId?: string }, _sender, sendResponse) => {
+  if (msg?.kind === 'recording_started' && msg.sessionId) {
+    attach(msg.sessionId)
+    sendResponse({ ok: true })
+  } else if (msg?.kind === 'recording_stopped') {
+    detach()
+    sendResponse({ ok: true })
+  }
+  return false
+})
+
+void bootstrap()

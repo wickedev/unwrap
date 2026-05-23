@@ -2,9 +2,11 @@
 
 서비스 분석용 Chrome Extension. 한 탭의 사용 흐름을 **세션 단위**로 기록해서 QA 테스트 생성 / 사이트 재구축의 원본 자산을 만든다.
 
-전체 설계는 [DESIGN.md](./DESIGN.md) 참고. 이 문서는 **M1 (네트워크 + 스크린샷 캡처)** 사용법.
+전체 설계는 [DESIGN.md](./DESIGN.md) 참고. 이 문서는 **M1 + M2 (네트워크/스크린샷 + 액션 레코딩 + Playwright export)** 사용법.
 
-## M1 기능 범위
+## 기능 범위 (M1 + M2)
+
+**M1 — 패시브 캡처**
 
 - 네비게이션 / SPA URL 변경 캡처
 - HTTP 요청·응답 메타 + 응답 본문 (CDP `Network.*` 사용)
@@ -13,7 +15,16 @@
 - 세션 목록, 삭제, **HAR / JSON 내보내기**
 - 민감 헤더(Authorization/Cookie 등) 자동 마스킹
 
-이후 M2(사용자 액션 레코딩), M3(DOM/AX/coverage), M4(LLM 테스트 생성 + replay 검증)로 확장.
+**M2 — 액션 레코딩 + Playwright codegen**
+
+- 사용자 인터랙션 캡처: `click`, `input` (debounced), `change`, `submit`, 네비게이션 키 (`Enter`/`Tab`/`Escape`/화살표 등)
+- 안정 selector 생성 (우선순위: `data-testid` → ARIA role+name → label/placeholder → visible text → CSS)
+- Shadow DOM 대응: `composedPath()` 기반 piercing path 같이 기록
+- 민감 input 자동 마스킹 (`type=password`, `autocomplete=cc-*/new-password/otp`, name/aria-label 패턴 매칭)
+- storageState **자동 캡처**: 세션 시작 + 메인 프레임 네비게이션 직후
+- **Playwright spec.ts 내보내기**: `page.getByTestId/getByRole/getByLabel/...` + `storageState` 적용
+
+이후 M3(DOM/AX snapshot + coverage), M4(LLM 테스트 생성 + replay 검증)로 확장.
 
 ## 빌드
 
@@ -36,10 +47,15 @@ npm run build
 1. 분석할 탭을 활성화
 2. 사이드 패널 → **● Start recording**
    - 해당 탭에 `chrome.debugger`가 attach 되고 "DevTools가 이 탭을 디버깅 중입니다" 배너가 노출됨 (정상)
+   - storageState (쿠키 + localStorage + sessionStorage)가 자동 캡처됨
 3. 사이트를 평소처럼 사용 (클릭, 폼 입력, 페이지 이동)
-4. 로그인 상태 같은 인증 컨텍스트가 필요하면 **Capture storage** 클릭
-5. 끝나면 **■ Stop recording**
-6. **Export HAR** (네트워크 분석/도구 호환) 또는 **Export JSON** (raw 캡처 + 메타데이터)
+   - 모든 인터랙션이 안정 selector와 함께 기록됨
+   - 페이지 이동마다 storageState 재캡처
+4. 끝나면 **■ Stop recording**
+5. 내보내기 선택:
+   - **Export Playwright** — 그대로 `npx playwright test`로 실행 가능한 `*.spec.ts`
+   - **Export HAR** — 네트워크 분석/DevTools 호환
+   - **Export JSON** — raw 캡처 + 메타데이터
 
 ## 개발
 
@@ -53,9 +69,11 @@ npm run typecheck
 ## 알려진 제약
 
 - `chrome.debugger` attach 배너는 우회 불가 (Chrome 정책).
-- 풀페이지 스크린샷, 콘솔, exception 캡처는 M2에서 추가.
+- 풀페이지 스크린샷, 콘솔, exception 캡처는 M3에서 추가 예정.
 - 응답 본문은 5MB 이상 / image·video·audio·font 는 저장 생략 (`src/shared/redact.ts:shouldCaptureResponseBody`).
 - IndexedDB 쿼터를 초과하면 캡처 실패 — 긴 세션은 분할 권장.
+- **Shadow DOM**: open shadow root는 `composedPath()`로 piercing path를 같이 기록. closed shadow는 M3에서 CDP `DOM.pierce`로 처리 예정.
+- **Playwright export**: 민감 입력은 `'REPLACE_ME'` 자리표시자 + `[REDACTED]` 주석으로 남음 — 실행 전 환경변수/픽스처로 치환 필요.
 
 ## 디렉토리
 

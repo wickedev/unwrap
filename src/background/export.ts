@@ -1,5 +1,6 @@
 import type { RequestEvent, ResponseEvent, SessionEvent, SessionMeta } from '@/shared/events'
 import { getBlob, getSession, listBlobs, listEvents } from '@/shared/storage'
+import { generatePlaywrightScript } from './playwright'
 
 export interface ExportResult {
   filename: string
@@ -30,6 +31,15 @@ export async function exportSessionAsHar(sessionId: string): Promise<ExportResul
   const har = await buildHar(meta, events)
   const blob = new Blob([JSON.stringify(har, null, 2)], { type: 'application/json' })
   return download(blob, `${safeName(meta)}.har`)
+}
+
+export async function exportSessionAsPlaywright(sessionId: string): Promise<ExportResult> {
+  const meta = await getSession(sessionId)
+  if (!meta) throw new Error('session not found')
+  const events = await listEvents(sessionId)
+  const script = generatePlaywrightScript(meta, events)
+  const blob = new Blob([script], { type: 'text/typescript' })
+  return download(blob, `${safeName(meta)}.spec.ts`)
 }
 
 function safeName(meta: SessionMeta): string {

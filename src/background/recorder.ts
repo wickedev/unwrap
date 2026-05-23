@@ -8,6 +8,7 @@ import type {
 } from '@/shared/events'
 import { appendEvent, getSession, makeId, putBlob, putSession } from '@/shared/storage'
 import { redactHeaders, shouldCaptureResponseBody } from '@/shared/redact'
+import { captureStorageState } from './storage-state'
 
 const DEBUGGER_PROTOCOL = '1.3'
 
@@ -44,6 +45,8 @@ export class TabRecorder {
     chrome.webNavigation.onHistoryStateUpdated.addListener(this.onHistoryStateUpdated)
 
     await this.captureScreenshot('navigation')
+    await this.scheduleStorageStateCapture('session_start')
+    await this.notifyContentScript('recording_started')
   }
 
   async stop(): Promise<void> {
@@ -52,12 +55,27 @@ export class TabRecorder {
     chrome.debugger.onDetach.removeListener(this.onDetach)
     chrome.webNavigation.onCommitted.removeListener(this.onNavCommitted)
     chrome.webNavigation.onHistoryStateUpdated.removeListener(this.onHistoryStateUpdated)
+    await this.notifyContentScript('recording_stopped')
     try {
       await chrome.debugger.detach({ tabId: this.tabId })
     } catch {
       // tab may already be closed
     }
     this.attached = false
+  }
+
+  private async scheduleStorageStateCapture(trigger: 'session_start' | 'navigation'): Promise<void> {
+    setTimeout(() => {
+      void captureStorageState(this.sessionId, trigger)
+    }, 250)
+  }
+
+  private async notifyContentScript(kind: 'recording_started' | 'recording_stopped'): Promise<void> {
+    try {
+      await chrome.tabs.sendMessage(this.tabId, { kind, sessionId: this.sessionId })
+    } catch {
+      // content script may not be loaded yet (e.g., chrome:// pages)
+    }
   }
 
   private onDetach = (source: chrome.debugger.Debuggee, reason: string): void => {
@@ -81,6 +99,8 @@ export class TabRecorder {
     void this.bumpCounts({ navigations: 1 })
     if (details.frameId === 0) {
       void this.captureScreenshot('navigation')
+      void this.scheduleStorageStateCapture('navigation')
+      void this.notifyContentScript('recording_started')
     }
   }
 
@@ -244,13 +264,15 @@ export class TabRecorder {
     }
   }
 
-  private async bumpCounts(delta: Partial<SessionMeta['counts']>): Promise<void> {
+  async bumpCounts(delta: Partial<SessionMeta['counts']>): Promise<void> {
     const meta = await getSession(this.sessionId)
     if (!meta) return
     meta.counts.requests += delta.requests ?? 0
     meta.counts.responses += delta.responses ?? 0
     meta.counts.screenshots += delta.screenshots ?? 0
     meta.counts.navigations += delta.navigations ?? 0
+    meta.counts.actions += delta.actions ?? 0
+    meta.counts.storageStates += delta.storageStates ?? 0
     await putSession(meta)
   }
 
