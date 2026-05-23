@@ -39,6 +39,51 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+}
+
+button.link {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  padding: 4px 6px;
+}
+button.link:hover { color: var(--fg); }
+
+.settings {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 12px;
+}
+.settings label { display: flex; flex-direction: column; gap: 4px; }
+.settings .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+.settings input[type="url"],
+.settings input[type="text"] {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+}
+.settings .auth-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.settings .muted { color: var(--muted); }
+.settings .hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 header h1 {

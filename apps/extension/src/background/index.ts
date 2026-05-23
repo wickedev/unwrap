@@ -10,6 +10,9 @@ import {
 import { TabRecorder } from './recorder'
 import { exportSessionAsHar, exportSessionAsJson, exportSessionAsPlaywright } from './export'
 import { captureStorageState } from './storage-state'
+import { signInWithGoogle, signOut } from './auth'
+import { generateAiTest } from './llm'
+import { getSettings, setSettings } from '@/shared/settings'
 
 const recorders = new Map<number, TabRecorder>()
 
@@ -100,6 +103,16 @@ async function handle(msg: RuntimeMessage, sender: chrome.runtime.MessageSender)
       await recorder.bumpCounts({ actions: 1 })
       return
     }
+    case 'get_settings':
+      return getSettings()
+    case 'set_settings':
+      return setSettings(msg.patch)
+    case 'sign_in_google':
+      return signInWithGoogle()
+    case 'sign_out':
+      return signOut()
+    case 'generate_ai_test':
+      return generateAiTest(msg.sessionId)
     default:
       throw new Error(`unknown message: ${(msg as { kind: string }).kind}`)
   }

@@ -1,107 +1,143 @@
 # Unwrap
 
-서비스 분석용 Chrome Extension. 한 탭의 사용 흐름을 **세션 단위**로 기록해서 QA 테스트 생성 / 사이트 재구축의 원본 자산을 만든다.
+기존 웹 서비스를 분석해 **QA 테스트 케이스를 생성**하거나 **재구축**하기 위한 도구. Chrome 확장이 한 탭의 사용 흐름을 세션 단위로 캡처하고, Cloudflare Workers 위에서 동작하는 백엔드가 Gemini로 더 풍부한 Playwright spec을 생성한다.
 
-전체 설계는 [DESIGN.md](./DESIGN.md) 참고. 이 문서는 **M1 + M2 + M3 (재구축 자산 추출까지)** 사용법.
+설계 배경: [DESIGN.md](./DESIGN.md).
 
-## 기능 범위 (M1 + M2 + M3)
+## 모노레포 구성 (pnpm)
 
-**M1 — 패시브 캡처**
-
-- 네비게이션 / SPA URL 변경 캡처
-- HTTP 요청·응답 메타 + 응답 본문 (CDP `Network.*` 사용)
-- 인증 상태(localStorage / sessionStorage / cookies) 수동 캡처
-- 세션 목록, 삭제, **HAR / JSON 내보내기**
-- 민감 헤더(Authorization/Cookie 등) 자동 마스킹
-
-**M2 — 액션 레코딩 + Playwright codegen**
-
-- 사용자 인터랙션 캡처: `click`, `input` (debounced), `change`, `submit`, 네비게이션 키 (`Enter`/`Tab`/`Escape`/화살표 등)
-- 안정 selector 생성 (우선순위: `data-testid` → ARIA role+name → label/placeholder → visible text → CSS)
-- Shadow DOM 대응: `composedPath()` 기반 piercing path 같이 기록
-- 민감 input 자동 마스킹 (`type=password`, `autocomplete=cc-*/new-password/otp`, name/aria-label 패턴 매칭)
-- storageState **자동 캡처**: 세션 시작 + 메인 프레임 네비게이션 직후
-- **Playwright spec.ts 내보내기**: `page.getByTestId/getByRole/getByLabel/...` + `storageState` 적용
-
-**M3 — 재구축 자산 추출**
-
-- **풀페이지 스크린샷** — CDP `Page.captureScreenshot { captureBeyondViewport: true }` (네비게이션 트리거)
-- **DOM snapshot** — CDP `DOMSnapshot.captureSnapshot` (paint order + DOMRects 포함, 네비게이션 후 1.5s 지연)
-- **Accessibility Tree** — CDP `Accessibility.getFullAXTree` (네비게이션 후, role/name 기반 분석 자산)
-- **콘솔 + 예외** — `Runtime.consoleAPICalled`, `Runtime.exceptionThrown` (call site + stack trace)
-- **WebSocket 프레임** — `Network.webSocketCreated / FrameSent / FrameReceived / Closed`
-- **Code Coverage** — `Profiler.startPreciseCoverage` + `CSS.startRuleUsageTracking` (세션 시작~종료 누적, JS+CSS used/total bytes 메타데이터로 노출)
-- DOM/AX/Coverage 산출물은 IndexedDB blob으로 저장 → JSON export에 `blobIndex`로 포함
-
-이후 M4(LLM 테스트 생성 + replay 검증)로 확장.
-
-## 빌드
-
-```bash
-npm install
-npm run build
+```
+unwrap/
+├── apps/
+│   ├── extension/        Chrome MV3 확장 (TypeScript + React 18 + Vite + @crxjs)
+│   └── server/           Cloudflare Workers 백엔드 (Hono + Google OAuth + Gemini)
+└── packages/
+    └── protocol/         확장 ↔ 서버 와이어 타입
 ```
 
-빌드 산출물은 `dist/`.
+## 기능 (M1 + M2 + M3 + M4)
 
-## Chrome에 설치
+- **M1** 패시브 캡처 — `chrome.debugger` + CDP로 네트워크/네비게이션/응답 본문/스크린샷
+- **M2** 액션 레코딩 — 클릭/입력/체인지/서밋/네비키, 안정 selector (testid → role+name → label → text → CSS), Shadow DOM `composedPath`, 민감 입력 자동 마스킹, 자동 storageState
+- **M2** 규칙 기반 Playwright export — `page.getByRole/getByTestId/...` + storageState 인라인
+- **M3** 재구축 자산 — 풀페이지 스크린샷, DOMSnapshot, AX tree, 콘솔/예외, WebSocket 프레임, JS/CSS code coverage
+- **M4** **AI 기반 Playwright 생성** — 세션 요약 + 핵심 스크린샷을 Cloudflare Workers 백엔드로 보내면 Gemini가 어설션이 보강된 spec을 돌려준다. 인증은 서버를 거치는 Google OAuth, 짧은 JWT를 `chrome.storage.local`에 저장.
+
+## 빠른 시작
+
+전제: Node 22+, pnpm 10+, `wrangler` (서버 배포 시).
+
+```bash
+pnpm install
+pnpm build           # 모든 워크스페이스 빌드
+```
+
+### 확장 설치
+
+```bash
+pnpm build:extension
+```
 
 1. Chrome → `chrome://extensions`
-2. 우상단 **개발자 모드** 켜기
-3. **압축해제된 확장 프로그램을 로드합니다** → `dist/` 폴더 선택
-4. 툴바 아이콘 클릭 → 사이드 패널 오픈
+2. **개발자 모드** ON
+3. **압축해제된 확장 프로그램을 로드합니다** → `apps/extension/dist/` 선택
+4. 툴바 아이콘 → 사이드 패널 열림
+
+### 서버 (로컬 / Cloudflare Workers)
+
+1. **Google Cloud Console**에서 OAuth 2.0 클라이언트(Web application) 생성. Authorized redirect URI: `https://<your-worker-subdomain>.workers.dev/auth/google/callback` (로컬은 `http://localhost:8787/auth/google/callback`).
+2. **Gemini API key**를 [Google AI Studio](https://aistudio.google.com/apikey)에서 발급.
+3. KV 네임스페이스 생성 후 `apps/server/wrangler.toml`의 `OAUTH_STATE` 바인딩에 ID 입력:
+   ```bash
+   pnpm --filter @unwrap/server exec wrangler kv namespace create OAUTH_STATE
+   ```
+4. 시크릿 등록:
+   ```bash
+   cd apps/server
+   wrangler secret put GOOGLE_CLIENT_ID
+   wrangler secret put GOOGLE_CLIENT_SECRET
+   wrangler secret put GEMINI_API_KEY
+   wrangler secret put JWT_SECRET   # 임의의 32바이트 이상 문자열
+   ```
+   로컬 개발은 `apps/server/.dev.vars` (gitignored)에 같은 값들을 평문으로 넣으면 됩니다.
+5. (선택) `wrangler.toml`의 `ALLOWED_EMAILS`에 `you@example.com,@company.com` 식으로 화이트리스트 설정.
+6. 로컬:
+   ```bash
+   pnpm dev:server   # http://localhost:8787
+   ```
+   배포:
+   ```bash
+   pnpm deploy:server
+   ```
+
+### 확장에서 서버 연결
+
+1. 사이드 패널 → ⚙ Settings
+2. **Server URL**에 워커 URL 입력 (예: `https://unwrap-server.your-domain.workers.dev`)
+3. **Sign in with Google** 클릭 → 새 탭에서 Google 인증 → 자동으로 확장으로 돌아옴
+4. 세션 카드의 **✨ Generate AI test** 버튼 활성화
 
 ## 사용
 
-1. 분석할 탭을 활성화
+1. 분석할 탭 활성화
 2. 사이드 패널 → **● Start recording**
-   - 해당 탭에 `chrome.debugger`가 attach 되고 "DevTools가 이 탭을 디버깅 중입니다" 배너가 노출됨 (정상)
-   - storageState (쿠키 + localStorage + sessionStorage)가 자동 캡처됨
+   - `chrome.debugger`가 attach되고 "DevTools가 이 탭을 디버깅 중입니다" 배너가 노출됨 (정상)
+   - storageState 자동 캡처
 3. 사이트를 평소처럼 사용 (클릭, 폼 입력, 페이지 이동)
-   - 모든 인터랙션이 안정 selector와 함께 기록됨
-   - 페이지 이동마다 storageState 재캡처
-4. 끝나면 **■ Stop recording**
-5. 내보내기 선택:
-   - **Export Playwright** — 그대로 `npx playwright test`로 실행 가능한 `*.spec.ts`
-   - **Export HAR** — 네트워크 분석/DevTools 호환
+4. **■ Stop recording**
+5. 내보내기:
+   - **✨ Generate AI test** — Gemini가 보강한 `*.ai.spec.ts` (어설션 + Given/When/Then 코멘트 포함)
+   - **Export Playwright** — 규칙 기반 `*.spec.ts`
+   - **Export HAR** — DevTools 호환 네트워크 로그
    - **Export JSON** — raw 캡처 + 메타데이터
-
-## 개발
-
-```bash
-npm run dev        # Vite + @crxjs HMR
-npm run typecheck
-```
-
-`npm run dev` 후 `dist/`를 unpacked로 설치하면 코드 변경 시 자동 재로드된다 (background는 수동 reload 필요할 수 있음).
 
 ## 알려진 제약
 
 - `chrome.debugger` attach 배너는 우회 불가 (Chrome 정책).
-- 응답 본문은 5MB 이상 / image·video·audio·font 는 저장 생략 (`src/shared/redact.ts:shouldCaptureResponseBody`).
-- WebSocket 페이로드는 프레임당 64KB로 잘림 (`MAX_WS_PAYLOAD_LEN`); 콘솔 인자는 4KB로 잘림.
-- DOM snapshot + AX tree + JS coverage는 페이지당 수 MB까지 커질 수 있음 — 긴 세션은 IndexedDB 쿼터(보통 디스크의 ~60%) 모니터링 필요.
-- DOM snapshot은 메인 프레임 네비게이션 후 1.5s 지연으로 한 번씩 캡처 (네비게이션이 빠른 SPA에서 일부 상태 누락 가능).
-- **Shadow DOM**: open shadow root는 `composedPath()`로 piercing path를 같이 기록. closed shadow는 향후 CDP `DOM.pierce`로 보강 예정.
-- **Playwright export**: 민감 입력은 `'REPLACE_ME'` 자리표시자 + `[REDACTED]` 주석으로 남음 — 실행 전 환경변수/픽스처로 치환 필요.
+- 응답 본문 5MB 이상 / image·video·audio·font 는 저장 생략. WebSocket 페이로드는 프레임당 64KB로 truncate.
+- DOM snapshot은 메인 프레임 네비게이션 후 1.5s 지연으로 한 번 캡처.
+- AI 생성 시 서버에 전송되는 데이터: 액션 시퀀스, 안전한 selector 후보, storage state **키 이름만** (값은 미전송), 첫/마지막 스크린샷 (long-edge 1024px로 다운샘플링). 민감 입력 값은 사전에 마스킹됨.
+- Gemini 모델 기본값은 `gemini-2.5-pro` (`wrangler.toml`의 `GEMINI_MODEL`에서 변경).
+- closed Shadow DOM 분석은 아직 미구현 (open shadow는 `composedPath` piercing 처리).
 
 ## 디렉토리
 
 ```
-src/
+apps/extension/src/
+├── manifest.config.ts
 ├── background/
 │   ├── index.ts          message router, session lifecycle
-│   ├── recorder.ts       debugger orchestrator: network, console, exception, ws, screenshots, nav hooks
-│   ├── snapshot.ts       DOMSnapshot + AX tree capture
+│   ├── recorder.ts       debugger orchestrator: network/console/exception/ws/shots/nav
+│   ├── snapshot.ts       DOMSnapshot + AX tree
 │   ├── coverage.ts       JS/CSS precise coverage
-│   ├── storage-state.ts  cookies + localStorage + sessionStorage snapshot
-│   ├── export.ts         HAR + JSON + Playwright spec.ts emitters
-│   └── playwright.ts     session → Playwright codegen
-├── content/
-│   ├── index.ts          bootstrap (asks "am I recording?")
-│   ├── recorder.ts       click / input / change / submit / keydown listeners
-│   └── selector.ts       stable selector ladder + shadow DOM piercing
-├── sidepanel/             React UI (start/stop, session list, exports)
-├── shared/                event schema, IndexedDB, header redaction
-└── manifest.config.ts     MV3 manifest
+│   ├── storage-state.ts  cookies + localStorage + sessionStorage
+│   ├── auth.ts           Google OAuth via launchWebAuthFlow + JWT
+│   ├── summarize.ts      events → SessionSummary (server에 전송할 데이터)
+│   ├── screenshots.ts    LLM용 스크린샷 픽 + 다운샘플링
+│   ├── llm.ts            서버 /api/generate 호출
+│   ├── export.ts         HAR + JSON + Playwright spec.ts
+│   └── playwright.ts     세션 → Playwright codegen
+├── content/              click/input/change/submit/keydown + 안정 selector
+├── sidepanel/            React UI (start/stop, sessions, settings, AI generate)
+└── shared/               event schema, IndexedDB, redaction, settings
+
+apps/server/src/
+├── index.ts              Hono 라우터
+├── auth/
+│   ├── google.ts         OAuth 2.0 flow + email allowlist
+│   └── jwt.ts            sign / verify
+├── gemini.ts             generativelanguage.googleapis.com 호출 + 응답 파싱
+└── env.ts                CF Workers 바인딩 타입
+
+packages/protocol/src/
+└── index.ts              SessionSummary / GenerateRequest / GenerateResponse / Auth*
+```
+
+## 개발
+
+```bash
+pnpm dev:extension       # Vite + @crxjs HMR
+pnpm dev:server          # wrangler dev
+pnpm typecheck           # 전체 워크스페이스
+pnpm build               # 전체 워크스페이스
 ```

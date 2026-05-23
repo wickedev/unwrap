@@ -17,6 +17,7 @@ export default defineManifest({
     'sidePanel',
     'cookies',
     'downloads',
+    'identity',
   ],
   host_permissions: ['<all_urls>'],
   background: {

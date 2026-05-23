@@ -1,0 +1,28 @@
+name = "unwrap-server"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+compatibility_flags = ["nodejs_compat"]
+
+# OAuth state lives in KV with a short TTL. Create with:
+#   wrangler kv namespace create OAUTH_STATE
+# then paste the returned id below.
+# [[kv_namespaces]]
+# binding = "OAUTH_STATE"
+# id = "<paste-from-wrangler>"
+
+# Production secrets — set via:
+#   wrangler secret put GOOGLE_CLIENT_ID
+#   wrangler secret put GOOGLE_CLIENT_SECRET
+#   wrangler secret put GEMINI_API_KEY
+#   wrangler secret put JWT_SECRET
+# (do not put them in this file or in .dev.vars committed to git)
+
+[vars]
+# Comma-separated list of email domains/addresses allowed to sign in. Empty = allow any Google account.
+ALLOWED_EMAILS = ""
+# The extension's redirect URL used in launchWebAuthFlow. Must match the
+# extension's chromiumapp.org URL — set after first build via:
+#   chrome.identity.getRedirectURL()
+EXTENSION_REDIRECT_URL = ""
+# Gemini model. gemini-2.5-pro for highest quality + vision; gemini-2.0-flash for cheaper/faster.
+GEMINI_MODEL = "gemini-2.5-pro"

@@ -1,0 +1,18 @@
+{
+  "name": "@unwrap/protocol",
+  "version": "0.1.0",
+  "description": "Shared types for the wire protocol between the Unwrap chrome extension and the Cloudflare Workers server.",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

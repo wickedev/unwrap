@@ -4,6 +4,8 @@ dist/
 *.log
 .vite/
 *.tsbuildinfo
+.wrangler/
+.dev.vars
 
 # direnv local overrides
 .envrc.local
