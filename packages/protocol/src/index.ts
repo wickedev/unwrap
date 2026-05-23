@@ -55,16 +55,34 @@ export interface GenerateRequest {
   screenshots: ScreenshotInline[]
 }
 
-// Two checkpoint screenshots (initial + final) kept at the recording's
-// native viewport resolution. Used for pixel-diffing replay output
-// against captured state — the LLM-bound `screenshots` are
-// downsampled and not suitable for diffs.
+// One per captured screenshot in the original session, at the recording's
+// native viewport resolution. Used by the server to pixel-diff replay
+// output step-by-step. The LLM-bound `screenshots` field is downsampled
+// and not suitable here.
 export interface VerifyScreenshotInline {
-  position: 'initial' | 'final'
+  // Extension-side ScreenshotEvent.ref, preserved end-to-end for KV keys.
+  originalRef: string
+  // Absolute timestamp (ms epoch) when the screenshot was captured.
+  // Server converts to relative ms to match against replay step times.
+  originalTs: number
+  // URL active when the screenshot was taken (best-effort: nearest
+  // preceding navigation in the event stream).
+  url: string
   width: number
   height: number
   mediaType: string
   dataBase64: string
+}
+
+// Server-side metadata stored on StoredSession; the actual PNG bytes
+// live in a separate KV entry (key `orig-<originalRef>`).
+export interface VerifyScreenshotMeta {
+  originalRef: string
+  originalTs: number
+  url: string
+  width: number
+  height: number
+  storedRef: string
 }
 
 export interface GenerateResponse {
@@ -140,26 +158,29 @@ export interface StoredSession {
   summary: SessionSummary
   fallbackSpec: string
   screenshots: ScreenshotInline[]
-  // Metadata for full-res checkpoint screenshots; the PNG bytes live in
-  // a separate KV entry (orig-<position>) to keep the StoredSession JSON small.
-  verifyScreenshotMeta?: { position: 'initial' | 'final'; width: number; height: number; ref: string }[]
+  // Metadata for every full-res captured screenshot the extension shipped.
+  // Bytes live separately under storedRef (KV key `orig-<originalRef>`)
+  // to keep the StoredSession JSON small.
+  verifyScreenshotMeta?: VerifyScreenshotMeta[]
   generated?: GenerateResponse & { generatedAt: number }
   verification?: VerificationResult
 }
 
 export interface VerifyStep {
   index: number
-  actionType: SerializedAction['type']
+  // 'initial' is a synthetic step for the post-goto state (before any action)
+  actionType: SerializedAction['type'] | 'initial'
   selector: string
   url: string
   status: 'ok' | 'failed' | 'skipped'
   durationMs: number
   message?: string
   screenshotRef?: string
+  visualDiff?: VisualDiff
 }
 
 export interface VisualDiff {
-  position: 'final'
+  // Storage refs of the captured (original) PNG and the replay's PNG
   originalRef: string
   replayRef: string
   diffRef: string
@@ -168,6 +189,9 @@ export interface VisualDiff {
   diffPixels: number
   totalPixels: number
   diffRatio: number
+  // Diagnostic — how far apart the matched screenshots were in
+  // relative session time (helps explain unexpected drift)
+  matchTimeDeltaMs?: number
 }
 
 export interface VerificationResult {
@@ -180,9 +204,12 @@ export interface VerificationResult {
   finalUrl?: string
   errorBeforeStart?: string
   // Stored under the same session record as opaque refs; web UI fetches
-  // each via /api/sessions/:id/screenshots/:ref
+  // each via /api/sessions/:id/screenshots/:ref. Diff PNGs and replay
+  // screenshots are included here so the screenshot-serving endpoint
+  // can validate authorized access.
   screenshotRefs: string[]
-  visualDiff?: VisualDiff
+  // Set when the engine couldn't run any diffs (e.g. extension didn't
+  // upload verify screenshots — old session, signed-out at capture, etc.)
   visualDiffMessage?: string
 }
 

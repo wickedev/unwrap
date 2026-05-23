@@ -149,20 +149,23 @@ app.post('/api/sessions', async (c) => {
   const id = newSessionId()
   const email = c.get('email')
 
-  // Stash the full-res checkpoint screenshots as binary KV blobs and
+  // Stash every full-res captured screenshot as a separate KV blob and
   // keep only metadata on the session record.
   const verifyScreenshotMeta: NonNullable<StoredSession['verifyScreenshotMeta']> = []
   for (const shot of body.verifyScreenshots ?? []) {
-    if (!shot?.dataBase64) continue
-    const ref = `orig-${shot.position}`
+    if (!shot?.dataBase64 || !shot?.originalRef) continue
+    if (!/^[A-Za-z0-9._-]+$/.test(shot.originalRef)) continue
+    const storedRef = `orig-${shot.originalRef}`
     try {
       const bytes = base64ToBytes(shot.dataBase64)
-      await putScreenshot(c.env, email, id, ref, bytes)
+      await putScreenshot(c.env, email, id, storedRef, bytes)
       verifyScreenshotMeta.push({
-        position: shot.position,
+        originalRef: shot.originalRef,
+        originalTs: shot.originalTs,
+        url: shot.url ?? '',
         width: shot.width,
         height: shot.height,
-        ref,
+        storedRef,
       })
     } catch (e) {
       console.warn('[unwrap-server] failed to persist verify screenshot', e)
@@ -254,10 +257,15 @@ app.get('/api/sessions/:id/screenshots/:ref', async (c) => {
 
   const knownRefs = new Set<string>([
     ...(record.verification?.screenshotRefs ?? []),
-    ...(record.verifyScreenshotMeta ?? []).map((m) => m.ref),
+    ...(record.verifyScreenshotMeta ?? []).map((m) => m.storedRef),
   ])
-  const v = record.verification?.visualDiff
-  if (v) knownRefs.add(v.originalRef).add(v.replayRef).add(v.diffRef)
+  for (const step of record.verification?.steps ?? []) {
+    if (step.visualDiff) {
+      knownRefs.add(step.visualDiff.originalRef)
+      knownRefs.add(step.visualDiff.replayRef)
+      knownRefs.add(step.visualDiff.diffRef)
+    }
+  }
 
   if (!knownRefs.has(ref)) {
     return c.json(err('Screenshot not found'), 404)

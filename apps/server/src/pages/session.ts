@@ -1,5 +1,5 @@
 import { html, raw } from 'hono/html'
-import type { StoredSession, VerificationResult, VerifyStep } from '@unwrap/protocol'
+import type { StoredSession, VerificationResult, VerifyStep, VisualDiff } from '@unwrap/protocol'
 import { Layout, type Renderable } from './layout'
 
 export function SessionDetailPage({
@@ -203,75 +203,101 @@ function renderVerification(session: StoredSession): Renderable {
   const badgeColor = status === 'pass' ? '#1f9d55' : '#d64545'
   const screenshotBase = `/api/sessions/${session.id}/screenshots`
 
-  // The verification's step screenshots may include the diff triptych refs;
-  // those are rendered in their own section below, so hide them from the
-  // step grid.
-  const stepRefsToHide = new Set<string>()
-  const visualDiff = v.visualDiff
-  if (visualDiff) {
-    stepRefsToHide.add(visualDiff.replayRef)
-    stepRefsToHide.add(visualDiff.diffRef)
-  }
-  const stepShots = v.screenshotRefs.filter((r) => !stepRefsToHide.has(r))
+  const totalChanged = v.steps.reduce(
+    (acc, s) => acc + (s.visualDiff?.diffPixels ?? 0),
+    0,
+  )
+  const totalPixels = v.steps.reduce(
+    (acc, s) => acc + (s.visualDiff?.totalPixels ?? 0),
+    0,
+  )
+  const overallPct = totalPixels > 0 ? ((totalChanged / totalPixels) * 100).toFixed(2) : null
+  const stepsWithDiff = v.steps.filter((s) => s.visualDiff).length
 
   return html`
     <div style="margin-top: 14px;">
-      <div class="meta" style="margin-bottom: 8px;">
+      <div class="meta" style="margin-bottom: 8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
         <span class="${badgeClass}" style="color: ${badgeColor}; border-color: ${badgeColor};">
           ${status === 'pass' ? '✓ PASS' : status === 'fail' ? '✗ FAIL' : '⚠ ERROR'}
         </span>
-        · ${v.passedSteps}/${v.totalSteps} steps passed
-        · ${(v.durationMs / 1000).toFixed(1)}s
-        · ran ${relativeTime(v.ranAt)}
-        ${v.finalUrl ? html` · ended at <code style="font-size:11px;">${truncate(v.finalUrl, 60)}</code>` : ''}
+        <span>· ${v.passedSteps}/${v.totalSteps} actions replayed</span>
+        ${stepsWithDiff > 0 && overallPct
+          ? html`<span>· ${stepsWithDiff} step${stepsWithDiff === 1 ? '' : 's'} diffed · ${overallPct}% pixels changed overall</span>`
+          : ''}
+        <span>· ${(v.durationMs / 1000).toFixed(1)}s</span>
+        <span>· ran ${relativeTime(v.ranAt)}</span>
+        ${v.finalUrl ? html`<span>· ended at <code style="font-size:11px;">${truncate(v.finalUrl, 60)}</code></span>` : ''}
       </div>
       ${v.errorBeforeStart
         ? html`<div class="error">${v.errorBeforeStart}</div>`
         : ''}
-      ${visualDiff ? renderVisualDiff(visualDiff, screenshotBase) : v.visualDiffMessage
-          ? html`<div class="meta" style="margin: 10px 0; font-size: 11px;">Visual diff skipped: ${v.visualDiffMessage}</div>`
-          : ''}
-      ${stepShots.length > 0
-        ? html`
-            <h3 style="margin: 18px 0 8px 0; font-size: 13px;">Step screenshots</h3>
-            <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px;">
-              ${stepShots.map(
-                (ref, i) => html`<a href="${screenshotBase}/${ref}" target="_blank" style="display:block;">
-                  <img src="${screenshotBase}/${ref}" alt="step ${i}" style="width:100%; height:auto; border-radius:6px; border:1px solid var(--border); background: #fff;" loading="lazy" />
-                  <div class="meta" style="font-size:10px; margin-top:4px; text-align:center;">${i === 0 ? 'initial' : 'after step ' + (i - 1)}</div>
-                </a>`,
-              )}
-            </div>
-          `
+      ${v.visualDiffMessage
+        ? html`<div class="meta" style="margin: 10px 0; font-size: 11px;">Visual diff skipped: ${v.visualDiffMessage}</div>`
         : ''}
       ${v.steps.length > 0
-        ? html`<ol style="padding-left: 22px; margin: 18px 0 0 0;">
-            ${v.steps.map((s) => renderVerifyStep(s))}
-          </ol>`
+        ? html`<div style="margin-top: 14px; display:flex; flex-direction:column; gap:14px;">
+            ${v.steps.map((s) => renderStepCard(s, screenshotBase))}
+          </div>`
         : ''}
     </div>
   `
 }
 
-function renderVisualDiff(diff: NonNullable<VerificationResult['visualDiff']>, screenshotBase: string): Renderable {
+function renderStepCard(step: VerifyStep, screenshotBase: string): Renderable {
+  const symbol = step.status === 'ok' ? '✓' : step.status === 'failed' ? '✗' : '·'
+  const color = step.status === 'ok' ? '#1f9d55' : step.status === 'failed' ? '#d64545' : 'var(--muted)'
+  const isInitial = step.actionType === 'initial'
+  const label = isInitial
+    ? 'Initial state (post-goto)'
+    : `Step ${step.index + 1} · ${step.actionType}`
+
+  return html`<div style="border:1px solid var(--border); border-radius:10px; padding:12px;">
+    <div style="display:flex; gap:8px; align-items:baseline; flex-wrap:wrap;">
+      <span style="color: ${color}; font-weight: 600;">${symbol}</span>
+      <strong style="font-size:13px;">${label}</strong>
+      ${!isInitial
+        ? html`<code style="font-size:11px; color:var(--muted);">${truncate(step.selector, 80)}</code>`
+        : ''}
+      <span class="meta" style="font-size:11px; margin-left:auto;">${step.durationMs}ms</span>
+    </div>
+    ${step.message
+      ? html`<div class="meta" style="margin-top: 6px; color: ${color}; font-size: 11px;">${step.message}</div>`
+      : ''}
+    ${step.visualDiff
+      ? renderTriptych(step.visualDiff, screenshotBase)
+      : step.screenshotRef
+        ? html`<div style="margin-top: 10px;">
+            <a href="${screenshotBase}/${step.screenshotRef}" target="_blank" style="display:block;">
+              <img src="${screenshotBase}/${step.screenshotRef}" alt="replay" loading="lazy"
+                   style="max-width: 100%; height:auto; border-radius:6px; border:1px solid var(--border); background:#fff;" />
+            </a>
+            <div class="meta" style="font-size:10px; margin-top:4px;">Replay only (no captured screenshot to diff against)</div>
+          </div>`
+        : ''}
+  </div>`
+}
+
+function renderTriptych(diff: VisualDiff, screenshotBase: string): Renderable {
   const pct = (diff.diffRatio * 100).toFixed(2)
-  const okay = diff.diffRatio < 0.01
-  const close = diff.diffRatio < 0.05
+  const okay = diff.diffRatio < 0.005
+  const close = diff.diffRatio < 0.03
   const color = okay ? '#1f9d55' : close ? '#b88300' : '#d64545'
-  const label = okay ? 'minimal drift' : close ? 'visible differences' : 'major drift'
+  const drift = okay ? 'minimal drift' : close ? 'visible differences' : 'major drift'
 
   return html`
-    <h3 style="margin: 18px 0 8px 0; font-size: 13px;">Visual diff (final state)</h3>
-    <div class="meta" style="margin-bottom: 8px;">
-      <span class="badge" style="color: ${color}; border-color: ${color};">${pct}% changed</span>
-      · ${label}
-      · ${diff.diffPixels.toLocaleString()} of ${diff.totalPixels.toLocaleString()} pixels
-      · ${diff.width}×${diff.height}
+    <div class="meta" style="margin: 10px 0 8px; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+      <span class="badge" style="color:${color}; border-color:${color};">${pct}% changed</span>
+      <span>· ${drift}</span>
+      <span>· ${diff.diffPixels.toLocaleString()}/${diff.totalPixels.toLocaleString()} px</span>
+      <span>· ${diff.width}×${diff.height}</span>
+      ${typeof diff.matchTimeDeltaMs === 'number'
+        ? html`<span>· matched within ${diff.matchTimeDeltaMs}ms</span>`
+        : ''}
     </div>
-    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px;">
-      ${visualCell('Captured (original)', `${screenshotBase}/${diff.originalRef}`)}
-      ${visualCell('Replay (now)', `${screenshotBase}/${diff.replayRef}`)}
-      ${visualCell('Pixel diff', `${screenshotBase}/${diff.diffRef}`, 'background:#000;')}
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px;">
+      ${visualCell('Captured', `${screenshotBase}/${diff.originalRef}`)}
+      ${visualCell('Replay', `${screenshotBase}/${diff.replayRef}`)}
+      ${visualCell('Diff', `${screenshotBase}/${diff.diffRef}`, 'background:#000;')}
     </div>
   `
 }
@@ -284,19 +310,6 @@ function visualCell(label: string, src: string, extraStyle = ''): Renderable {
     </a>
     <div class="meta" style="font-size:10px; margin-top:4px; text-align:center;">${label}</div>
   </div>`
-}
-
-function renderVerifyStep(step: VerifyStep): Renderable {
-  const symbol = step.status === 'ok' ? '✓' : step.status === 'failed' ? '✗' : '·'
-  const color = step.status === 'ok' ? '#1f9d55' : step.status === 'failed' ? '#d64545' : 'var(--muted)'
-  return html`<li style="margin: 4px 0; color: var(--fg);">
-    <span style="color: ${color}; font-weight: 600;">${symbol}</span>
-    <code>${step.actionType}</code>
-    →
-    <code style="font-size: 11px;">${truncate(step.selector, 60)}</code>
-    <span class="meta" style="font-size: 11px;">· ${step.durationMs}ms</span>
-    ${step.message ? html`<div class="meta" style="margin-left: 18px; color: ${color};">${step.message}</div>` : ''}
-  </li>`
 }
 
 function truncate(s: string, n: number): string {

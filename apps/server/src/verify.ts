@@ -3,11 +3,13 @@ import type {
   SerializedAction,
   StoredSession,
   VerificationResult,
+  VerifyScreenshotMeta,
   VerifyStep,
+  VisualDiff,
 } from '@unwrap/protocol'
 import type { Env } from './env'
 import { getScreenshot, putScreenshot } from './storage/sessions'
-import { diffEndState } from './pixeldiff'
+import { diffPng } from './pixeldiff'
 
 const PER_STEP_TIMEOUT_MS = 8_000
 const POST_ACTION_WAIT_MS = 250
@@ -19,12 +21,16 @@ export async function verifySession(env: Env, email: string, session: StoredSess
   }
   const startedAt = Date.now()
   const startUrl = session.summary.meta.url
+  const sessionStartedAt = new Date(session.summary.meta.startedAt).getTime()
+  const captured = (session.verifyScreenshotMeta ?? [])
+    .slice()
+    .sort((a, b) => a.originalTs - b.originalTs)
+  const usedCaptured = new Set<string>()
 
-  // Match the original capture's viewport when we have a verify screenshot
-  // we can diff against, so pixelmatch doesn't bail out on dimension drift.
-  const verifyFinal = session.verifyScreenshotMeta?.find((m) => m.position === 'final')
-  const viewport = verifyFinal
-    ? { width: verifyFinal.width, height: verifyFinal.height }
+  // Resolve dimensions for puppeteer's viewport — prefer the captured size
+  // so pixelmatch doesn't bail on dimension drift.
+  const viewport = captured[0]
+    ? { width: captured[0].width, height: captured[0].height }
     : session.summary.meta.viewport
 
   let browser: Browser | null = null
@@ -37,27 +43,51 @@ export async function verifySession(env: Env, email: string, session: StoredSess
       deviceScaleFactor: 1,
     })
 
-    // 1. Land on the start URL.
     try {
       await page.goto(startUrl, { waitUntil: 'networkidle2', timeout: PER_STEP_TIMEOUT_MS })
     } catch (e) {
       return errorResult(`Failed to navigate to ${startUrl}: ${asMessage(e)}`)
     }
 
-    // 2. Walk the action trace, screenshot each step.
     const steps: VerifyStep[] = []
     const screenshotRefs: string[] = []
-    const actions = session.summary.actions.slice(0, MAX_STEPS)
 
-    // initial screenshot
+    // ---- Synthetic step 0: initial state (post-goto, no action) ----
+    const initialStep: VerifyStep = {
+      index: -1,
+      actionType: 'initial',
+      selector: startUrl,
+      url: startUrl,
+      status: 'ok',
+      durationMs: 0,
+    }
     const initialRef = `verify-${session.id}-init`
-    await captureScreenshot(env, email, session.id, initialRef, page)
+    const initialBytes = await takeScreenshot(page, env, email, session.id, initialRef)
+    initialStep.screenshotRef = initialRef
     screenshotRefs.push(initialRef)
+    const initialDiff = await tryDiff({
+      env,
+      email,
+      sessionId: session.id,
+      replayRef: initialRef,
+      replayBytes: initialBytes,
+      stepRelativeMs: 0,
+      captured,
+      usedCaptured,
+    })
+    if (initialDiff) {
+      initialStep.visualDiff = initialDiff
+      screenshotRefs.push(initialDiff.diffRef)
+    }
+    steps.push(initialStep)
 
+    // ---- Replay actions ----
+    const actions = session.summary.actions.slice(0, MAX_STEPS)
     for (let i = 0; i < actions.length; i++) {
       const action = actions[i]!
       const step = await runStep(page, action, i)
       steps.push(step)
+
       if (step.status === 'ok') {
         try {
           await page.waitForNetworkIdle({ idleTime: POST_ACTION_WAIT_MS, timeout: PER_STEP_TIMEOUT_MS })
@@ -66,71 +96,54 @@ export async function verifySession(env: Env, email: string, session: StoredSess
         }
         const ref = `verify-${session.id}-step-${i}`
         try {
-          await captureScreenshot(env, email, session.id, ref, page)
+          const bytes = await takeScreenshot(page, env, email, session.id, ref)
           step.screenshotRef = ref
           screenshotRefs.push(ref)
+          const stepRelativeMs = sessionStartedAt > 0 ? action.ts - sessionStartedAt : action.ts
+          const diff = await tryDiff({
+            env,
+            email,
+            sessionId: session.id,
+            replayRef: ref,
+            replayBytes: bytes,
+            stepRelativeMs,
+            captured,
+            usedCaptured,
+          })
+          if (diff) {
+            step.visualDiff = diff
+            screenshotRefs.push(diff.diffRef)
+          }
         } catch (e) {
           step.message = `screenshot failed: ${asMessage(e)}`
         }
       } else if (step.status === 'failed') {
-        // Stop replay on first failure — downstream selectors usually don't make sense.
+        // First failure stops the replay — downstream selectors usually
+        // don't make sense once the page is in an unexpected state.
         break
       }
     }
-
-    // Final screenshot — kept in memory so we can pixel-diff against the
-    // captured 'final' verify screenshot without re-encoding from KV.
-    const finalRef = `verify-${session.id}-final`
-    const finalBytesView = (await page.screenshot({ type: 'png', fullPage: false })) as Uint8Array
-    const finalBytes = finalBytesView.buffer.slice(
-      finalBytesView.byteOffset,
-      finalBytesView.byteOffset + finalBytesView.byteLength,
-    ) as ArrayBuffer
-    await putScreenshot(env, email, session.id, finalRef, finalBytes)
-    screenshotRefs.push(finalRef)
 
     const finalUrl = page.url()
     await browser.close()
     browser = null
 
-    let visualDiff: VerificationResult['visualDiff']
-    let visualDiffMessage: string | undefined
-    if (verifyFinal) {
-      const originalBytes = await getScreenshot(env, email, session.id, verifyFinal.ref)
-      if (originalBytes) {
-        const result = await diffEndState({
-          env,
-          email,
-          sessionId: session.id,
-          originalRef: verifyFinal.ref,
-          originalBytes,
-          replayRef: finalRef,
-          replayBytes: finalBytes,
-        })
-        if (result.diff) {
-          visualDiff = result.diff
-          screenshotRefs.push(result.diff.diffRef)
-        }
-        if (result.message) visualDiffMessage = result.message
-      } else {
-        visualDiffMessage = 'captured final screenshot has expired from storage'
-      }
-    } else {
-      visualDiffMessage = 'no captured final screenshot to diff against'
-    }
+    const totalActions = actions.length
+    const passedSteps = steps.filter((s) => s.actionType !== 'initial' && s.status === 'ok').length
+    const passed = totalActions > 0 ? passedSteps === totalActions : true
 
-    const passedSteps = steps.filter((s) => s.status === 'ok').length
     return {
       ranAt: startedAt,
       durationMs: Date.now() - startedAt,
-      passed: passedSteps === actions.length && actions.length > 0,
+      passed,
       passedSteps,
-      totalSteps: actions.length,
+      totalSteps: totalActions,
       steps,
       finalUrl,
       screenshotRefs,
-      ...(visualDiff ? { visualDiff } : {}),
-      ...(visualDiffMessage ? { visualDiffMessage } : {}),
+      ...(captured.length === 0
+        ? { visualDiffMessage: 'No captured screenshots uploaded for this session — re-record to enable visual diff.' }
+        : {}),
     }
   } catch (e) {
     return errorResult(`Replay crashed: ${asMessage(e)}`)
@@ -143,6 +156,75 @@ export async function verifySession(env: Env, email: string, session: StoredSess
       }
     }
   }
+}
+
+interface DiffArgs {
+  env: Env
+  email: string
+  sessionId: string
+  replayRef: string
+  replayBytes: ArrayBuffer
+  stepRelativeMs: number
+  captured: VerifyScreenshotMeta[]
+  usedCaptured: Set<string>
+}
+
+async function tryDiff(args: DiffArgs): Promise<VisualDiff | null> {
+  if (args.captured.length === 0) return null
+  // Pick the captured shot whose relative timestamp is closest to the
+  // step's relative timestamp, with a slight preference for "next after"
+  // (so initial state matches the first captured shot, etc).
+  const sessionStart = args.captured[0]!.originalTs
+  let best: VerifyScreenshotMeta | null = null
+  let bestDelta = Number.POSITIVE_INFINITY
+  for (const c of args.captured) {
+    if (args.usedCaptured.has(c.storedRef)) continue
+    const relTs = c.originalTs - sessionStart
+    const delta = Math.abs(relTs - args.stepRelativeMs)
+    if (delta < bestDelta) {
+      bestDelta = delta
+      best = c
+    }
+  }
+  if (!best) return null
+
+  const originalBytes = await getScreenshot(args.env, args.email, args.sessionId, best.storedRef)
+  if (!originalBytes) return null
+
+  const diffRef = `verify-${args.sessionId}-${args.replayRef.split('-').pop()}-diff`
+  const result = diffPng({
+    originalBytes,
+    replayBytes: args.replayBytes,
+  })
+  if (!result) return null
+
+  await putScreenshot(args.env, args.email, args.sessionId, diffRef, result.diffPng)
+  args.usedCaptured.add(best.storedRef)
+
+  return {
+    originalRef: best.storedRef,
+    replayRef: args.replayRef,
+    diffRef,
+    width: result.width,
+    height: result.height,
+    diffPixels: result.diffPixels,
+    totalPixels: result.totalPixels,
+    diffRatio: result.totalPixels > 0 ? result.diffPixels / result.totalPixels : 0,
+    matchTimeDeltaMs: bestDelta,
+  }
+}
+
+async function takeScreenshot(
+  page: Page,
+  env: Env,
+  email: string,
+  sessionId: string,
+  ref: string,
+): Promise<ArrayBuffer> {
+  const view = (await page.screenshot({ type: 'png', fullPage: false })) as Uint8Array
+  const buf = view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength) as ArrayBuffer
+  await putScreenshot(env, email, sessionId, ref, buf)
+  return buf
 }
 
 async function runStep(page: Page, action: SerializedAction, index: number): Promise<VerifyStep> {
@@ -198,8 +280,6 @@ async function runStep(page: Page, action: SerializedAction, index: number): Pro
       case 'submit': {
         const handle = await locate(page, action)
         if (!handle) return fail(base, 'form not found', startedAt)
-        // We don't pull in DOM lib types here — submit lives on the form node
-        // at runtime; trust puppeteer's evaluation to typecheck the body.
         await handle.evaluate((form: unknown) => (form as { submit: () => void }).submit())
         return ok(base, startedAt)
       }
@@ -222,13 +302,11 @@ async function locate(page: Page, action: SerializedAction) {
   const testId = alt.testId as string | undefined
   const css = alt.css as string | undefined
 
-  // Try data-testid attribute selectors first if available.
   if (testId) {
     const m = testId.match(/\[(?:data-test(?:id)?|data-qa|data-cy)="([^"]+)"\]/)
     if (m) candidates.push(`[data-testid="${m[1]}"]`, `[data-test="${m[1]}"]`, testId)
     else candidates.push(testId)
   }
-  // Fall back to the captured CSS path.
   if (css) candidates.push(css)
 
   for (const sel of candidates) {
@@ -240,19 +318,6 @@ async function locate(page: Page, action: SerializedAction) {
     }
   }
   return null
-}
-
-async function captureScreenshot(
-  env: Env,
-  email: string,
-  sessionId: string,
-  ref: string,
-  page: Page,
-): Promise<void> {
-  const data = (await page.screenshot({ type: 'png', fullPage: false })) as Uint8Array
-  // Ensure we hand KV a proper ArrayBuffer.
-  const buf = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer
-  await putScreenshot(env, email, sessionId, ref, buf)
 }
 
 function ok(step: VerifyStep, startedAt: number): VerifyStep {

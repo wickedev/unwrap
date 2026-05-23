@@ -36,34 +36,33 @@ export async function pickScreenshotsForLlm(
   return out
 }
 
-// Picks the first + last captured screenshots at their NATIVE viewport
-// resolution (no downsampling). The server runs pixel diffs against
-// these — downsampled LLM-context shots aren't suitable since they
-// won't match the replay viewport.
+// Picks captured screenshots at their NATIVE viewport resolution (no
+// downsampling) for server-side pixel-diff. Returns up to `max` shots
+// — keeps the first + last and evenly samples in between so we don't
+// blow the upload size on noisy sessions.
 export async function pickScreenshotsForVerify(
   sessionId: string,
   events: SessionEvent[],
+  max = 20,
 ): Promise<VerifyScreenshotInline[]> {
   const screenshotEvents = events.filter((e): e is ScreenshotEvent => e.type === 'screenshot')
   if (screenshotEvents.length === 0) return []
 
-  const picks: { ev: ScreenshotEvent; position: 'initial' | 'final' }[] = [
-    { ev: screenshotEvents[0]!, position: 'initial' },
-  ]
-  if (screenshotEvents.length > 1) {
-    picks.push({ ev: screenshotEvents[screenshotEvents.length - 1]!, position: 'final' })
-  }
+  const picked = pickEvenly(screenshotEvents, max)
+  const urlByTs = buildUrlIndex(events)
 
   const blobs = await listBlobs(sessionId)
   const byRef = new Map(blobs.map((b) => [b.ref, b]))
   const out: VerifyScreenshotInline[] = []
-  for (const { ev, position } of picks) {
+  for (const ev of picked) {
     const blob = byRef.get(ev.ref)
     if (!blob) continue
     const dims = await readImageDimensions(blob.data)
     const dataBase64 = await blobToBase64(blob.data)
     out.push({
-      position,
+      originalRef: ev.ref,
+      originalTs: ev.ts,
+      url: nearestUrl(urlByTs, ev.ts),
       width: dims?.width ?? ev.viewport.width,
       height: dims?.height ?? ev.viewport.height,
       mediaType: blob.mimeType || 'image/png',
@@ -71,6 +70,43 @@ export async function pickScreenshotsForVerify(
     })
   }
   return out
+}
+
+function pickEvenly<T>(items: T[], max: number): T[] {
+  if (items.length <= max) return items
+  const out: T[] = []
+  // Always include first
+  out.push(items[0]!)
+  // Evenly-spaced middle picks
+  const innerCount = max - 2
+  if (innerCount > 0) {
+    for (let i = 1; i <= innerCount; i++) {
+      const idx = Math.round((i * (items.length - 1)) / (innerCount + 1))
+      const item = items[idx]
+      if (item && item !== out[out.length - 1]) out.push(item)
+    }
+  }
+  // Always include last
+  const last = items[items.length - 1]!
+  if (last !== out[out.length - 1]) out.push(last)
+  return out
+}
+
+function buildUrlIndex(events: SessionEvent[]): { ts: number; url: string }[] {
+  const out: { ts: number; url: string }[] = []
+  for (const e of events) {
+    if (e.type === 'navigation') out.push({ ts: e.ts, url: (e as { url: string }).url })
+  }
+  return out.sort((a, b) => a.ts - b.ts)
+}
+
+function nearestUrl(index: { ts: number; url: string }[], ts: number): string {
+  let best = ''
+  for (const entry of index) {
+    if (entry.ts <= ts) best = entry.url
+    else break
+  }
+  return best
 }
 
 async function readImageDimensions(blob: Blob): Promise<{ width: number; height: number } | null> {
