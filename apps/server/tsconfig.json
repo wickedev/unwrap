@@ -6,5 +6,5 @@
     "jsx": "react-jsx",
     "rootDir": "src"
   },
-  "include": ["src"]
+  "include": ["src", "src/types/**/*.d.ts"]
 }

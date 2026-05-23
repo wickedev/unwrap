@@ -203,6 +203,17 @@ function renderVerification(session: StoredSession): Renderable {
   const badgeColor = status === 'pass' ? '#1f9d55' : '#d64545'
   const screenshotBase = `/api/sessions/${session.id}/screenshots`
 
+  // The verification's step screenshots may include the diff triptych refs;
+  // those are rendered in their own section below, so hide them from the
+  // step grid.
+  const stepRefsToHide = new Set<string>()
+  const visualDiff = v.visualDiff
+  if (visualDiff) {
+    stepRefsToHide.add(visualDiff.replayRef)
+    stepRefsToHide.add(visualDiff.diffRef)
+  }
+  const stepShots = v.screenshotRefs.filter((r) => !stepRefsToHide.has(r))
+
   return html`
     <div style="margin-top: 14px;">
       <div class="meta" style="margin-bottom: 8px;">
@@ -217,23 +228,62 @@ function renderVerification(session: StoredSession): Renderable {
       ${v.errorBeforeStart
         ? html`<div class="error">${v.errorBeforeStart}</div>`
         : ''}
-      ${v.screenshotRefs.length > 0
-        ? html`<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin: 12px 0;">
-            ${v.screenshotRefs.map(
-              (ref, i) => html`<a href="${screenshotBase}/${ref}" target="_blank" style="display:block;">
-                <img src="${screenshotBase}/${ref}" alt="step ${i}" style="width:100%; height:auto; border-radius:6px; border:1px solid var(--border); background: #fff;" loading="lazy" />
-                <div class="meta" style="font-size:10px; margin-top:4px; text-align:center;">${i === 0 ? 'initial' : 'after step ' + (i - 1)}</div>
-              </a>`,
-            )}
-          </div>`
+      ${visualDiff ? renderVisualDiff(visualDiff, screenshotBase) : v.visualDiffMessage
+          ? html`<div class="meta" style="margin: 10px 0; font-size: 11px;">Visual diff skipped: ${v.visualDiffMessage}</div>`
+          : ''}
+      ${stepShots.length > 0
+        ? html`
+            <h3 style="margin: 18px 0 8px 0; font-size: 13px;">Step screenshots</h3>
+            <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px;">
+              ${stepShots.map(
+                (ref, i) => html`<a href="${screenshotBase}/${ref}" target="_blank" style="display:block;">
+                  <img src="${screenshotBase}/${ref}" alt="step ${i}" style="width:100%; height:auto; border-radius:6px; border:1px solid var(--border); background: #fff;" loading="lazy" />
+                  <div class="meta" style="font-size:10px; margin-top:4px; text-align:center;">${i === 0 ? 'initial' : 'after step ' + (i - 1)}</div>
+                </a>`,
+              )}
+            </div>
+          `
         : ''}
       ${v.steps.length > 0
-        ? html`<ol style="padding-left: 22px; margin: 12px 0 0 0;">
+        ? html`<ol style="padding-left: 22px; margin: 18px 0 0 0;">
             ${v.steps.map((s) => renderVerifyStep(s))}
           </ol>`
         : ''}
     </div>
   `
+}
+
+function renderVisualDiff(diff: NonNullable<VerificationResult['visualDiff']>, screenshotBase: string): Renderable {
+  const pct = (diff.diffRatio * 100).toFixed(2)
+  const okay = diff.diffRatio < 0.01
+  const close = diff.diffRatio < 0.05
+  const color = okay ? '#1f9d55' : close ? '#b88300' : '#d64545'
+  const label = okay ? 'minimal drift' : close ? 'visible differences' : 'major drift'
+
+  return html`
+    <h3 style="margin: 18px 0 8px 0; font-size: 13px;">Visual diff (final state)</h3>
+    <div class="meta" style="margin-bottom: 8px;">
+      <span class="badge" style="color: ${color}; border-color: ${color};">${pct}% changed</span>
+      · ${label}
+      · ${diff.diffPixels.toLocaleString()} of ${diff.totalPixels.toLocaleString()} pixels
+      · ${diff.width}×${diff.height}
+    </div>
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px;">
+      ${visualCell('Captured (original)', `${screenshotBase}/${diff.originalRef}`)}
+      ${visualCell('Replay (now)', `${screenshotBase}/${diff.replayRef}`)}
+      ${visualCell('Pixel diff', `${screenshotBase}/${diff.diffRef}`, 'background:#000;')}
+    </div>
+  `
+}
+
+function visualCell(label: string, src: string, extraStyle = ''): Renderable {
+  return html`<div>
+    <a href="${src}" target="_blank" style="display:block;">
+      <img src="${src}" alt="${label}" loading="lazy"
+           style="width:100%; height:auto; border-radius:6px; border:1px solid var(--border); ${extraStyle}" />
+    </a>
+    <div class="meta" style="font-size:10px; margin-top:4px; text-align:center;">${label}</div>
+  </div>`
 }
 
 function renderVerifyStep(step: VerifyStep): Renderable {

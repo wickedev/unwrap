@@ -55,6 +55,18 @@ export interface GenerateRequest {
   screenshots: ScreenshotInline[]
 }
 
+// Two checkpoint screenshots (initial + final) kept at the recording's
+// native viewport resolution. Used for pixel-diffing replay output
+// against captured state — the LLM-bound `screenshots` are
+// downsampled and not suitable for diffs.
+export interface VerifyScreenshotInline {
+  position: 'initial' | 'final'
+  width: number
+  height: number
+  mediaType: string
+  dataBase64: string
+}
+
 export interface GenerateResponse {
   spec: string
   description: string
@@ -97,6 +109,7 @@ export interface UploadSessionRequest {
   summary: SessionSummary
   fallbackSpec: string
   screenshots: ScreenshotInline[]
+  verifyScreenshots?: VerifyScreenshotInline[]
 }
 
 export interface UploadSessionResponse {
@@ -127,6 +140,9 @@ export interface StoredSession {
   summary: SessionSummary
   fallbackSpec: string
   screenshots: ScreenshotInline[]
+  // Metadata for full-res checkpoint screenshots; the PNG bytes live in
+  // a separate KV entry (orig-<position>) to keep the StoredSession JSON small.
+  verifyScreenshotMeta?: { position: 'initial' | 'final'; width: number; height: number; ref: string }[]
   generated?: GenerateResponse & { generatedAt: number }
   verification?: VerificationResult
 }
@@ -142,6 +158,18 @@ export interface VerifyStep {
   screenshotRef?: string
 }
 
+export interface VisualDiff {
+  position: 'final'
+  originalRef: string
+  replayRef: string
+  diffRef: string
+  width: number
+  height: number
+  diffPixels: number
+  totalPixels: number
+  diffRatio: number
+}
+
 export interface VerificationResult {
   ranAt: number
   durationMs: number
@@ -154,6 +182,8 @@ export interface VerificationResult {
   // Stored under the same session record as opaque refs; web UI fetches
   // each via /api/sessions/:id/screenshots/:ref
   screenshotRefs: string[]
+  visualDiff?: VisualDiff
+  visualDiffMessage?: string
 }
 
 export interface GenerateForStoredSessionResponse extends GenerateResponse {

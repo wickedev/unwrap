@@ -6,6 +6,7 @@ import type {
   GenerateResponse,
   MeResponse,
   SessionListResponse,
+  StoredSession,
   UploadSessionRequest,
   UploadSessionResponse,
 } from '@unwrap/protocol'
@@ -25,6 +26,7 @@ import {
   getSession as getStoredSession,
   listSessions,
   newSessionId,
+  putScreenshot,
   putSession,
   setGenerated,
 } from './storage/sessions'
@@ -145,18 +147,49 @@ app.post('/api/sessions', async (c) => {
     return c.json(err('summary and fallbackSpec are required'), 400)
   }
   const id = newSessionId()
+  const email = c.get('email')
+
+  // Stash the full-res checkpoint screenshots as binary KV blobs and
+  // keep only metadata on the session record.
+  const verifyScreenshotMeta: NonNullable<StoredSession['verifyScreenshotMeta']> = []
+  for (const shot of body.verifyScreenshots ?? []) {
+    if (!shot?.dataBase64) continue
+    const ref = `orig-${shot.position}`
+    try {
+      const bytes = base64ToBytes(shot.dataBase64)
+      await putScreenshot(c.env, email, id, ref, bytes)
+      verifyScreenshotMeta.push({
+        position: shot.position,
+        width: shot.width,
+        height: shot.height,
+        ref,
+      })
+    } catch (e) {
+      console.warn('[unwrap-server] failed to persist verify screenshot', e)
+    }
+  }
+
   await putSession(c.env, {
     id,
-    email: c.get('email'),
+    email,
     uploadedAt: Date.now(),
     clientSessionId: body.clientSessionId ?? '',
     summary: body.summary,
     fallbackSpec: body.fallbackSpec,
     screenshots: body.screenshots ?? [],
+    ...(verifyScreenshotMeta.length ? { verifyScreenshotMeta } : {}),
   })
   const url = `${originOf(c.req.url)}/sessions/${id}`
   return c.json<UploadSessionResponse>({ id, url })
 })
+
+function base64ToBytes(s: string): ArrayBuffer {
+  const bin = atob(s)
+  const len = bin.length
+  const bytes = new Uint8Array(len)
+  for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i)
+  return bytes.buffer
+}
 
 app.get('/api/sessions', async (c) => {
   const sessions = await listSessions(c.env, c.get('email'))
@@ -218,7 +251,15 @@ app.get('/api/sessions/:id/screenshots/:ref', async (c) => {
   if (!/^[A-Za-z0-9._-]+$/.test(ref)) return c.json(err('Invalid ref'), 400)
   const record = await getStoredSession(c.env, email, id)
   if (!record) return c.json(err('Not found'), 404)
-  if (!record.verification?.screenshotRefs.includes(ref)) {
+
+  const knownRefs = new Set<string>([
+    ...(record.verification?.screenshotRefs ?? []),
+    ...(record.verifyScreenshotMeta ?? []).map((m) => m.ref),
+  ])
+  const v = record.verification?.visualDiff
+  if (v) knownRefs.add(v.originalRef).add(v.replayRef).add(v.diffRef)
+
+  if (!knownRefs.has(ref)) {
     return c.json(err('Screenshot not found'), 404)
   }
   const bytes = await getScreenshot(c.env, email, id, ref)

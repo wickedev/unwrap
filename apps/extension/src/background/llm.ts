@@ -2,7 +2,7 @@ import type { ErrorResponse, UploadSessionRequest, UploadSessionResponse } from 
 import { getSession, listEvents } from '@/shared/storage'
 import { authedFetch } from './auth'
 import { generatePlaywrightScript } from './playwright'
-import { pickScreenshotsForLlm } from './screenshots'
+import { pickScreenshotsForLlm, pickScreenshotsForVerify } from './screenshots'
 import { summarizeSession } from './summarize'
 
 export interface UploadResult {
@@ -20,12 +20,14 @@ export async function uploadSessionToServer(sessionId: string): Promise<UploadRe
   const summary = summarizeSession(meta, events)
   const fallbackSpec = generatePlaywrightScript(meta, events)
   const screenshots = await pickScreenshotsForLlm(sessionId, events, 2)
+  const verifyScreenshots = await pickScreenshotsForVerify(sessionId, events)
 
   const body: UploadSessionRequest = {
     clientSessionId: sessionId,
     summary,
     fallbackSpec,
     screenshots,
+    verifyScreenshots,
   }
 
   const resp = await authedFetch('/api/sessions', {

@@ -6,7 +6,8 @@ import type {
   VerifyStep,
 } from '@unwrap/protocol'
 import type { Env } from './env'
-import { putScreenshot } from './storage/sessions'
+import { getScreenshot, putScreenshot } from './storage/sessions'
+import { diffEndState } from './pixeldiff'
 
 const PER_STEP_TIMEOUT_MS = 8_000
 const POST_ACTION_WAIT_MS = 250
@@ -19,13 +20,20 @@ export async function verifySession(env: Env, email: string, session: StoredSess
   const startedAt = Date.now()
   const startUrl = session.summary.meta.url
 
+  // Match the original capture's viewport when we have a verify screenshot
+  // we can diff against, so pixelmatch doesn't bail out on dimension drift.
+  const verifyFinal = session.verifyScreenshotMeta?.find((m) => m.position === 'final')
+  const viewport = verifyFinal
+    ? { width: verifyFinal.width, height: verifyFinal.height }
+    : session.summary.meta.viewport
+
   let browser: Browser | null = null
   try {
     browser = await puppeteer.launch(env.BROWSER)
     const page = await browser.newPage()
     await page.setViewport({
-      width: session.summary.meta.viewport.width || 1280,
-      height: session.summary.meta.viewport.height || 800,
+      width: viewport.width || 1280,
+      height: viewport.height || 800,
       deviceScaleFactor: 1,
     })
 
@@ -70,9 +78,46 @@ export async function verifySession(env: Env, email: string, session: StoredSess
       }
     }
 
+    // Final screenshot — kept in memory so we can pixel-diff against the
+    // captured 'final' verify screenshot without re-encoding from KV.
+    const finalRef = `verify-${session.id}-final`
+    const finalBytesView = (await page.screenshot({ type: 'png', fullPage: false })) as Uint8Array
+    const finalBytes = finalBytesView.buffer.slice(
+      finalBytesView.byteOffset,
+      finalBytesView.byteOffset + finalBytesView.byteLength,
+    ) as ArrayBuffer
+    await putScreenshot(env, email, session.id, finalRef, finalBytes)
+    screenshotRefs.push(finalRef)
+
     const finalUrl = page.url()
     await browser.close()
     browser = null
+
+    let visualDiff: VerificationResult['visualDiff']
+    let visualDiffMessage: string | undefined
+    if (verifyFinal) {
+      const originalBytes = await getScreenshot(env, email, session.id, verifyFinal.ref)
+      if (originalBytes) {
+        const result = await diffEndState({
+          env,
+          email,
+          sessionId: session.id,
+          originalRef: verifyFinal.ref,
+          originalBytes,
+          replayRef: finalRef,
+          replayBytes: finalBytes,
+        })
+        if (result.diff) {
+          visualDiff = result.diff
+          screenshotRefs.push(result.diff.diffRef)
+        }
+        if (result.message) visualDiffMessage = result.message
+      } else {
+        visualDiffMessage = 'captured final screenshot has expired from storage'
+      }
+    } else {
+      visualDiffMessage = 'no captured final screenshot to diff against'
+    }
 
     const passedSteps = steps.filter((s) => s.status === 'ok').length
     return {
@@ -84,6 +129,8 @@ export async function verifySession(env: Env, email: string, session: StoredSess
       steps,
       finalUrl,
       screenshotRefs,
+      ...(visualDiff ? { visualDiff } : {}),
+      ...(visualDiffMessage ? { visualDiffMessage } : {}),
     }
   } catch (e) {
     return errorResult(`Replay crashed: ${asMessage(e)}`)
