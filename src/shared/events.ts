@@ -21,6 +21,11 @@ export interface SessionMeta {
     navigations: number
     actions: number
     storageStates: number
+    consoleMessages: number
+    exceptions: number
+    wsFrames: number
+    domSnapshots: number
+    axTrees: number
   }
 }
 
@@ -38,6 +43,12 @@ export type SessionEvent =
   | ChangeEvent
   | SubmitEvent
   | KeyEvent
+  | WebSocketCreatedEvent
+  | WebSocketFrameEvent
+  | WebSocketClosedEvent
+  | DomSnapshotEvent
+  | AxTreeEvent
+  | CoverageEvent
 
 interface BaseEvent {
   sessionId: string
@@ -90,12 +101,15 @@ export interface ScreenshotEvent extends BaseEvent {
   ref: string
   reason: 'navigation' | 'manual' | 'interval'
   viewport: { width: number; height: number }
+  fullPage: boolean
 }
 
 export interface ConsoleEvent extends BaseEvent {
   type: 'console'
-  level: 'log' | 'info' | 'warn' | 'error' | 'debug'
+  level: 'log' | 'info' | 'warning' | 'error' | 'debug' | 'dir' | 'dirxml' | 'table' | 'trace' | 'clear' | 'startGroup' | 'startGroupCollapsed' | 'endGroup' | 'assert' | 'profile' | 'profileEnd' | 'count' | 'timeEnd'
   args: string[]
+  stackUrl?: string
+  stackLine?: number
 }
 
 export interface ExceptionEvent extends BaseEvent {
@@ -104,6 +118,54 @@ export interface ExceptionEvent extends BaseEvent {
   stack?: string
   url?: string
   line?: number
+  column?: number
+}
+
+export interface WebSocketCreatedEvent extends BaseEvent {
+  type: 'ws_created'
+  requestId: string
+  url: string
+  initiator?: unknown
+}
+
+export interface WebSocketFrameEvent extends BaseEvent {
+  type: 'ws_frame'
+  requestId: string
+  direction: 'send' | 'recv'
+  opcode: number
+  payloadData: string
+  payloadSize: number
+  mask: boolean
+}
+
+export interface WebSocketClosedEvent extends BaseEvent {
+  type: 'ws_closed'
+  requestId: string
+}
+
+export interface DomSnapshotEvent extends BaseEvent {
+  type: 'dom_snapshot'
+  ref: string
+  url: string
+  sizeBytes: number
+}
+
+export interface AxTreeEvent extends BaseEvent {
+  type: 'ax_tree'
+  ref: string
+  url: string
+  nodeCount: number
+}
+
+export interface CoverageEvent extends BaseEvent {
+  type: 'coverage'
+  ref: string
+  jsScriptCount: number
+  cssStylesheetCount: number
+  jsUsedBytes: number
+  jsTotalBytes: number
+  cssUsedBytes: number
+  cssTotalBytes: number
 }
 
 export interface StorageStateEvent extends BaseEvent {

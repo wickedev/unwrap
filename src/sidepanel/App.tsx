@@ -190,6 +190,27 @@ function SessionCard({ session, onStop, onCaptureStorage, onExportHar, onExportJ
         </div>
       </div>
       <div className="meta">
+        <div>
+          <span>{session.counts.consoleMessages}</span>log
+        </div>
+        <div>
+          <span className={session.counts.exceptions > 0 ? 'count-err' : undefined}>
+            {session.counts.exceptions}
+          </span>
+          err
+        </div>
+        <div>
+          <span>{session.counts.wsFrames}</span>ws
+        </div>
+        <div>
+          <span>{session.counts.domSnapshots}</span>dom
+        </div>
+        <div>
+          <span>{session.counts.axTrees}</span>ax
+        </div>
+        <div></div>
+      </div>
+      <div className="meta">
         <div style={{ gridColumn: 'span 2' }}>
           <span>{started.toLocaleString()}</span>started
         </div>

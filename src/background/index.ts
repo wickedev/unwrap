@@ -130,7 +130,19 @@ async function startSession(tabId: number): Promise<SessionMeta> {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     locale: navigator.language,
     status: 'recording',
-    counts: { requests: 0, responses: 0, screenshots: 0, navigations: 0, actions: 0, storageStates: 0 },
+    counts: {
+      requests: 0,
+      responses: 0,
+      screenshots: 0,
+      navigations: 0,
+      actions: 0,
+      storageStates: 0,
+      consoleMessages: 0,
+      exceptions: 0,
+      wsFrames: 0,
+      domSnapshots: 0,
+      axTrees: 0,
+    },
   }
   await putSession(meta)
   const recorder = new TabRecorder(sessionId, tabId)

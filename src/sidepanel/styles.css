@@ -140,6 +140,7 @@ button.danger {
   margin: 6px 0;
 }
 .meta div span { color: var(--fg); font-weight: 600; display: block; }
+.meta div span.count-err { color: var(--danger); }
 
 .actions {
   display: flex;
