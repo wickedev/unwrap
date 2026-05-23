@@ -30,6 +30,7 @@ interface GeminiResponse {
     promptTokenCount?: number
     candidatesTokenCount?: number
     totalTokenCount?: number
+    thoughtsTokenCount?: number
   }
   promptFeedback?: { blockReason?: string }
 }
@@ -67,7 +68,12 @@ export async function callGemini(
     contents: [{ role: 'user', parts }],
     generationConfig: {
       temperature: 0.2,
-      maxOutputTokens: 8192,
+      // Generous output budget — generated specs can be long for complex sessions.
+      maxOutputTokens: 32768,
+      // Cap "thinking" so it can't starve the output budget. The default
+      // dynamic thinking on 2.5 Flash sometimes uses thousands of tokens
+      // before producing any output, leaving spec strings truncated.
+      thinkingConfig: { thinkingBudget: 4096 },
       responseMimeType: 'application/json',
       responseSchema: {
         type: 'object',
@@ -100,19 +106,28 @@ export async function callGemini(
   const text = candidate?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''
   if (!text) throw new Error('Gemini returned no text content')
 
+  const truncated = candidate?.finishReason === 'MAX_TOKENS' || candidate?.finishReason === 'LENGTH'
+
   let parsed: { spec?: string; description?: string; assertions_added?: number; warnings?: string[] }
   try {
     parsed = JSON.parse(text) as typeof parsed
-  } catch (e) {
-    throw new Error(`Failed to parse Gemini response JSON: ${e instanceof Error ? e.message : String(e)}`)
+  } catch {
+    parsed = recoverPartialJson(text)
   }
-  if (!parsed.spec) throw new Error('Gemini response missing "spec" field')
+  if (!parsed.spec) {
+    throw new Error(
+      `Gemini response missing "spec" field${truncated ? ' (response was truncated by maxOutputTokens — try a shorter session or raise the limit)' : ''}`,
+    )
+  }
+
+  const warnings = parsed.warnings ?? []
+  if (truncated) warnings.unshift('Gemini hit the output token cap; spec was partially recovered.')
 
   return {
     spec: parsed.spec,
     description: parsed.description ?? '',
     assertionsAdded: parsed.assertions_added ?? 0,
-    warnings: parsed.warnings ?? [],
+    warnings,
     model: options.model,
     usage: {
       promptTokens: data.usageMetadata?.promptTokenCount ?? 0,
@@ -120,4 +135,66 @@ export async function callGemini(
       totalTokens: data.usageMetadata?.totalTokenCount ?? 0,
     },
   }
+}
+
+// Best-effort recovery from a truncated JSON object. Gemini's structured
+// output emits fields in schema order: spec → description → assertions_added
+// → warnings. If the response was cut off mid-spec, the unterminated string
+// can still be pulled out and unescaped.
+function recoverPartialJson(text: string): {
+  spec?: string
+  description?: string
+  assertions_added?: number
+  warnings?: string[]
+} {
+  const out: { spec?: string; description?: string; assertions_added?: number; warnings?: string[] } = {}
+
+  const specStart = text.indexOf('"spec"')
+  if (specStart < 0) return out
+  const colon = text.indexOf(':', specStart)
+  if (colon < 0) return out
+  const quoteStart = text.indexOf('"', colon)
+  if (quoteStart < 0) return out
+
+  let i = quoteStart + 1
+  let body = ''
+  while (i < text.length) {
+    const ch = text[i]!
+    if (ch === '\\' && i + 1 < text.length) {
+      const next = text[i + 1]!
+      switch (next) {
+        case 'n': body += '\n'; break
+        case 't': body += '\t'; break
+        case 'r': body += '\r'; break
+        case '"': body += '"'; break
+        case '\\': body += '\\'; break
+        case '/': body += '/'; break
+        case 'b': body += '\b'; break
+        case 'f': body += '\f'; break
+        case 'u':
+          if (i + 5 < text.length) {
+            const code = parseInt(text.slice(i + 2, i + 6), 16)
+            if (!Number.isNaN(code)) { body += String.fromCharCode(code); i += 5; break }
+          }
+          body += next
+          break
+        default: body += next
+      }
+      i += 2
+      continue
+    }
+    if (ch === '"') {
+      // Properly terminated spec string — try to also pick up description.
+      out.spec = body
+      const afterSpec = text.slice(i + 1)
+      const descMatch = afterSpec.match(/"description"\s*:\s*"((?:\\.|[^"\\])*)"/)
+      if (descMatch?.[1]) out.description = JSON.parse('"' + descMatch[1] + '"')
+      return out
+    }
+    body += ch
+    i++
+  }
+  // Hit EOF mid-string — body is the partial spec.
+  out.spec = body
+  return out
 }
