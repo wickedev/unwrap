@@ -227,6 +227,35 @@ export interface VisualDiff {
   matchTimeDeltaMs?: number
 }
 
+// Cross-session captured-screenshot diff produced when comparing two
+// uploads of the same host. Lives on `SessionDiff.visual` (computed at
+// page render time and cached under `cmp:<baseline>:<current>`).
+export interface CrossSessionVisualDiff {
+  // Stable cache key carrying both session ids, exposed so /sessions/
+  // <id>/screenshots/<ref> can validate access.
+  cacheKey: string
+  pairs: CrossSessionVisualDiffPair[]
+  // Pairs that could not be diffed (dimension mismatch, decode failure)
+  // with a one-line reason.
+  skipped: { baselineRef: string; currentRef: string; reason: string }[]
+  // Sum across all pairs — quick at-a-glance change percentage.
+  totals: { diffPixels: number; totalPixels: number; ratio: number }
+}
+
+export interface CrossSessionVisualDiffPair {
+  baselineRef: string
+  currentRef: string
+  diffRef: string
+  width: number
+  height: number
+  diffPixels: number
+  totalPixels: number
+  diffRatio: number
+  baselineUrl: string
+  currentUrl: string
+  matchTimeDeltaMs: number
+}
+
 export interface VerificationResult {
   ranAt: number
   durationMs: number

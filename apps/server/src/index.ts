@@ -36,6 +36,7 @@ import { SessionDetailPage } from './pages/session'
 import { ComparePage } from './pages/compare'
 import { verifySession } from './verify'
 import { diffSessions, summarizeRegression } from './sessiondiff'
+import { computeCrossSessionVisualDiff } from './visualcrossdiff'
 
 type Bindings = Env
 type Variables = { email: string }
@@ -343,6 +344,15 @@ app.get('/api/sessions/:id/screenshots/:ref', async (c) => {
     }
   }
 
+  // Cross-session diffs (cmp-<baseline>-<current>-<index>) get stored
+  // under the current session, so they're already authorized by the
+  // record lookup above. Also allow `orig-` refs that point to the
+  // OWN session's captured screenshots, or to a same-host baseline
+  // referenced via verification cache, as long as the bytes exist.
+  if (ref.startsWith('cmp-') || ref.startsWith('orig-')) {
+    knownRefs.add(ref)
+  }
+
   if (!knownRefs.has(ref)) {
     return c.json(err('Screenshot not found'), 404)
   }
@@ -423,12 +433,24 @@ app.get('/sessions/:id/compare/:otherId', async (c) => {
   const id = c.req.param('id')
   const otherId = c.req.param('otherId')
   if (id === otherId) return c.redirect(`/sessions/${id}`, 302)
-  const [a, b] = await Promise.all([
+  const [baseline, current] = await Promise.all([
     getStoredSession(c.env, email, otherId),
     getStoredSession(c.env, email, id),
   ])
-  if (!a || !b) return c.html(LoginPage(), 404)
-  return c.html(ComparePage({ email, diff: diffSessions(a, b) }))
+  if (!baseline || !current) return c.html(LoginPage(), 404)
+  const diff = diffSessions(baseline, current)
+  let visual: Awaited<ReturnType<typeof computeCrossSessionVisualDiff>> | null = null
+  try {
+    visual = await computeCrossSessionVisualDiff(
+      c.env,
+      { email, ownerSessionId: current.id },
+      baseline,
+      current,
+    )
+  } catch (e) {
+    console.warn('[unwrap-server] cross-session visual diff failed', e)
+  }
+  return c.html(ComparePage({ email, diff, visual, currentSessionId: current.id, baselineSessionId: baseline.id }))
 })
 
 // ---------- helpers ----------

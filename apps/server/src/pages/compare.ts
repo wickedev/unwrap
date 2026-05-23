@@ -1,8 +1,19 @@
 import { html } from 'hono/html'
+import type { CrossSessionVisualDiff, CrossSessionVisualDiffPair } from '@unwrap/protocol'
 import type { SessionDiff, ActionOp, NetworkDiff } from '../sessiondiff'
 import { Layout, type Renderable } from './layout'
 
-export function ComparePage({ email, diff }: { email: string; diff: SessionDiff }): Renderable {
+interface ComparePageProps {
+  email: string
+  diff: SessionDiff
+  visual: CrossSessionVisualDiff | null
+  // Where screenshot bytes live in storage. baseline screenshots live
+  // under the baseline session, current + diff PNGs under the current.
+  currentSessionId: string
+  baselineSessionId: string
+}
+
+export function ComparePage({ email, diff, visual, currentSessionId, baselineSessionId }: ComparePageProps): Renderable {
   const a = diff.baseline
   const b = diff.current
   const added = diff.actions.ops.filter((o) => o.kind === 'add').length
@@ -46,6 +57,8 @@ export function ComparePage({ email, diff }: { email: string; diff: SessionDiff 
             : ''}
         </div>
       </div>
+
+      ${visual ? renderVisualDiff(visual, baselineSessionId, currentSessionId) : ''}
 
       <div class="section">
         <h2>Action sequence</h2>
@@ -184,6 +197,84 @@ function renderNetworkDiff(n: NetworkDiff): Renderable {
         : ''}
     </div>
   `
+}
+
+function renderVisualDiff(
+  visual: CrossSessionVisualDiff,
+  baselineSessionId: string,
+  currentSessionId: string,
+): Renderable {
+  if (visual.pairs.length === 0 && visual.skipped.length === 0) {
+    return html`<div class="section">
+      <h2>Visual diff</h2>
+      <div class="card"><div class="muted">No captured screenshots on one or both sessions — re-record to enable.</div></div>
+    </div>`
+  }
+  const pct = (visual.totals.ratio * 100).toFixed(2)
+  const drift = visual.totals.ratio < 0.005 ? 'minimal drift'
+    : visual.totals.ratio < 0.03 ? 'visible differences'
+    : 'major drift'
+  const color = visual.totals.ratio < 0.005 ? '#1f9d55'
+    : visual.totals.ratio < 0.03 ? '#b88300'
+    : '#d64545'
+  return html`<div class="section">
+    <h2>Visual diff</h2>
+    <div class="card">
+      <div class="meta" style="margin-bottom: 10px;">
+        <span class="badge" style="color:${color}; border-color:${color};">${pct}% changed</span>
+        · ${drift}
+        · ${visual.totals.diffPixels.toLocaleString()} / ${visual.totals.totalPixels.toLocaleString()} pixels across ${visual.pairs.length} matched pair${visual.pairs.length === 1 ? '' : 's'}
+        ${visual.skipped.length > 0 ? html` · ${visual.skipped.length} skipped` : ''}
+      </div>
+      <div style="display:flex; flex-direction:column; gap:14px;">
+        ${visual.pairs.map((p, i) => renderVisualPair(p, i, baselineSessionId, currentSessionId))}
+      </div>
+      ${visual.skipped.length > 0
+        ? html`<div class="meta" style="margin-top: 12px; font-size: 11px;">
+            Skipped pairs: ${visual.skipped.map((s) => `${s.reason}`).join(' · ')}
+          </div>`
+        : ''}
+    </div>
+  </div>`
+}
+
+function renderVisualPair(
+  pair: CrossSessionVisualDiffPair,
+  index: number,
+  baselineSessionId: string,
+  currentSessionId: string,
+): Renderable {
+  const pct = (pair.diffRatio * 100).toFixed(2)
+  const color = pair.diffRatio < 0.005 ? '#1f9d55'
+    : pair.diffRatio < 0.03 ? '#b88300'
+    : '#d64545'
+  const baseSrc = `/api/sessions/${baselineSessionId}/screenshots/${pair.baselineRef}`
+  const curSrc = `/api/sessions/${currentSessionId}/screenshots/${pair.currentRef}`
+  const diffSrc = `/api/sessions/${currentSessionId}/screenshots/${pair.diffRef}`
+  return html`<div style="border:1px solid var(--border); border-radius:8px; padding:10px;">
+    <div class="meta" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+      <strong style="color:var(--fg);">Pair ${index + 1}</strong>
+      <span class="badge" style="color:${color}; border-color:${color};">${pct}%</span>
+      · ${pair.width}×${pair.height}
+      · matched within ${pair.matchTimeDeltaMs}ms
+      ${pair.baselineUrl ? html` · <code style="font-size: 11px;">${truncate(pair.baselineUrl, 60)}</code>` : ''}
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px;">
+      ${visualCell('Baseline (A)', baseSrc)}
+      ${visualCell('Current (B)', curSrc)}
+      ${visualCell('Diff', diffSrc, 'background:#000;')}
+    </div>
+  </div>`
+}
+
+function visualCell(label: string, src: string, extraStyle = ''): Renderable {
+  return html`<div>
+    <a href="${src}" target="_blank" style="display:block;">
+      <img src="${src}" alt="${label}" loading="lazy"
+           style="width:100%; height:auto; border-radius:6px; border:1px solid var(--border); ${extraStyle}" />
+    </a>
+    <div class="meta" style="font-size:10px; margin-top:4px; text-align:center;">${label}</div>
+  </div>`
 }
 
 const DIFF_CSS = `
