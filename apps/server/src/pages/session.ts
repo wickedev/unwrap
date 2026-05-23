@@ -15,10 +15,26 @@ export function SessionDetailPage({
   const { summary, generated } = session
   const counts = Object.entries(summary.meta.counts ?? {}).filter(([, v]) => v && v > 0)
 
+  const reg = session.regression
+  const regColor = reg ? (reg.level === 'pass' ? '#1f9d55' : reg.level === 'minor' ? '#b88300' : '#d64545') : '#5e6772'
+  const regGlyph = reg ? (reg.level === 'pass' ? '✓' : reg.level === 'minor' ? '⚠' : '✗') : ''
+
   const body = html`
     <p><a href="/sessions">← All sessions</a></p>
     <h2 style="margin-top:4px;">${summary.meta.host || '(no host)'}</h2>
     <p class="muted" style="word-break: break-all;">${summary.meta.url}</p>
+
+    ${reg
+      ? html`<div class="card" style="border-color: ${regColor}; background: color-mix(in oklab, ${regColor} 6%, transparent); margin-bottom: 14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+            <div>
+              <span style="color:${regColor}; font-weight:600;">${regGlyph} vs previous capture</span>
+              <span class="meta" style="margin-left:8px;">${reg.headline}</span>
+            </div>
+            <a class="btn secondary" href="/sessions/${session.id}/compare/${reg.baselineId}">Full diff →</a>
+          </div>
+        </div>`
+      : ''}
 
     <div class="section">
       <h2>Capture summary</h2>

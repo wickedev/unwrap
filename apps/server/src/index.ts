@@ -22,6 +22,7 @@ import { issueToken, verifyToken } from './auth/jwt'
 import { clearSessionCookie, readEmail, setSessionCookie } from './auth/cookie'
 import { callGemini } from './gemini'
 import {
+  findPreviousSession,
   getScreenshot,
   getSession as getStoredSession,
   listSessions,
@@ -34,7 +35,7 @@ import { LoginPage, SessionsPage } from './pages/home'
 import { SessionDetailPage } from './pages/session'
 import { ComparePage } from './pages/compare'
 import { verifySession } from './verify'
-import { diffSessions } from './sessiondiff'
+import { diffSessions, summarizeRegression } from './sessiondiff'
 
 type Bindings = Env
 type Variables = { email: string }
@@ -174,16 +175,32 @@ app.post('/api/sessions', async (c) => {
     }
   }
 
-  await putSession(c.env, {
+  const uploadedAt = Date.now()
+  const record: StoredSession = {
     id,
     email,
-    uploadedAt: Date.now(),
+    uploadedAt,
     clientSessionId: body.clientSessionId ?? '',
     summary: body.summary,
     fallbackSpec: body.fallbackSpec,
     screenshots: body.screenshots ?? [],
     ...(verifyScreenshotMeta.length ? { verifyScreenshotMeta } : {}),
-  })
+  }
+
+  // Auto-baseline: diff against the most recent session of the same host
+  // and stash a compact regression summary on the record. The Compare
+  // page uses the full diff; the list uses this summary for badges.
+  try {
+    const previous = await findPreviousSession(c.env, email, body.summary.meta.host, uploadedAt)
+    if (previous) {
+      const diff = diffSessions(previous, record)
+      record.regression = summarizeRegression(previous, diff)
+    }
+  } catch (e) {
+    console.warn('[unwrap-server] failed to compute regression', e)
+  }
+
+  await putSession(c.env, record)
   const url = `${originOf(c.req.url)}/sessions/${id}`
   return c.json<UploadSessionResponse>({ id, url })
 })
@@ -197,9 +214,51 @@ function base64ToBytes(s: string): ArrayBuffer {
 }
 
 app.get('/api/sessions', async (c) => {
+  await backfillRegressions(c.env, c.get('email'))
   const sessions = await listSessions(c.env, c.get('email'))
   return c.json<SessionListResponse>({ sessions })
 })
+
+// Walks the user's sessions (newest first) and, for any session that's
+// missing a regression summary but has an older same-host neighbour,
+// computes + persists one. Fire-and-forget on list/render calls so
+// existing sessions catch up incrementally with no separate migration.
+const backfillsInFlight = new Set<string>()
+async function backfillRegressions(env: Env, email: string): Promise<void> {
+  if (backfillsInFlight.has(email)) return
+  backfillsInFlight.add(email)
+  let processed = 0
+  let updated = 0
+  try {
+    const items = await listSessions(env, email)
+    const ordered = items.slice().sort((a, b) => a.uploadedAt - b.uploadedAt)
+    const lastByHost = new Map<string, { id: string; uploadedAt: number }>()
+    for (const it of ordered) {
+      const prev = lastByHost.get(it.host)
+      lastByHost.set(it.host, { id: it.id, uploadedAt: it.uploadedAt })
+      if (!prev) continue
+      processed++
+      if (it.regressionLevel) continue
+      const [baseline, current] = await Promise.all([
+        getStoredSession(env, email, prev.id),
+        getStoredSession(env, email, it.id),
+      ])
+      if (!baseline || !current) continue
+      if (current.regression) continue
+      try {
+        const diff = diffSessions(baseline, current)
+        current.regression = summarizeRegression(baseline, diff)
+        await putSession(env, current)
+        updated++
+      } catch (e) {
+        console.warn('[unwrap-server] backfill diff failed', it.id, e)
+      }
+    }
+    console.info('[unwrap-server] backfill complete', { processed, updated })
+  } finally {
+    backfillsInFlight.delete(email)
+  }
+}
 
 app.get('/api/sessions/:id', async (c) => {
   const record = await getStoredSession(c.env, c.get('email'), c.req.param('id'))
@@ -339,6 +398,7 @@ app.get('/', async (c) => {
 app.get('/sessions', async (c) => {
   const email = await readEmail(c)
   if (!email) return c.redirect('/', 302)
+  await backfillRegressions(c.env, email)
   const sessions = await listSessions(c.env, email)
   return c.html(SessionsPage({ email, sessions }))
 })

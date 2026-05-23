@@ -1,4 +1,4 @@
-import type { SerializedAction, SessionSummary, StoredSession } from '@unwrap/protocol'
+import type { RegressionSummary, SerializedAction, SessionSummary, StoredSession } from '@unwrap/protocol'
 
 export interface SessionDiff {
   baseline: { id: string; startedAt: string; uploadedAt: number; host: string; durationMs: number }
@@ -141,6 +141,60 @@ function diffActions(a: SerializedAction[], b: SerializedAction[]): ActionDiff {
     }
   }
   return { total: { baseline: n, current: m }, ops }
+}
+
+// Turn a full SessionDiff into the compact RegressionSummary that's
+// stored on the new session record. The heuristic:
+//   fail  — new exceptions, new console errors, finalUrl diverged,
+//           or any of the baseline's actions are gone
+//   minor — network status code drift, only-in-baseline responses,
+//           net-new console errors (treated as a softer fail elsewhere)
+//   pass  — kept everything, possibly added stuff
+export function summarizeRegression(baseline: StoredSession, diff: ReturnType<typeof diffSessions>): RegressionSummary {
+  const removed = diff.actions.ops.filter((o) => o.kind === 'remove').length
+  const added = diff.actions.ops.filter((o) => o.kind === 'add').length
+  const kept = diff.actions.ops.filter((o) => o.kind === 'keep').length
+
+  const errorDelta = diff.console.currentCount - diff.console.baselineCount
+  const excDelta = diff.exceptions.currentCount - diff.exceptions.baselineCount
+
+  const hardFail =
+    excDelta > 0 ||
+    errorDelta > 0 ||
+    removed > 0 ||
+    !diff.finalUrl.match
+  const minor =
+    diff.network.statusChanged.length > 0 ||
+    diff.network.onlyInBaseline.length > 0 ||
+    added > 0
+  const level: RegressionSummary['level'] = hardFail ? 'fail' : minor ? 'minor' : 'pass'
+
+  const parts: string[] = []
+  if (excDelta > 0) parts.push(`+${excDelta} exception${excDelta === 1 ? '' : 's'}`)
+  if (errorDelta > 0) parts.push(`+${errorDelta} console err`)
+  if (removed > 0) parts.push(`${removed} action${removed === 1 ? '' : 's'} removed`)
+  if (added > 0) parts.push(`${added} action${added === 1 ? '' : 's'} added`)
+  if (diff.network.statusChanged.length > 0) parts.push(`${diff.network.statusChanged.length} status`)
+  if (diff.network.onlyInBaseline.length > 0) parts.push(`${diff.network.onlyInBaseline.length} missing req`)
+  if (diff.network.onlyInCurrent.length > 0) parts.push(`${diff.network.onlyInCurrent.length} new req`)
+  if (!diff.finalUrl.match) parts.push('finalUrl drift')
+  const headline = parts.length === 0 ? 'no changes' : parts.join(' · ')
+
+  return {
+    baselineId: baseline.id,
+    baselineUploadedAt: baseline.uploadedAt,
+    level,
+    actionsKept: kept,
+    actionsAdded: added,
+    actionsRemoved: removed,
+    consoleErrorDelta: errorDelta,
+    exceptionDelta: excDelta,
+    networkOnlyInBaseline: diff.network.onlyInBaseline.length,
+    networkOnlyInCurrent: diff.network.onlyInCurrent.length,
+    networkStatusChanges: diff.network.statusChanged.length,
+    finalUrlMatch: diff.finalUrl.match,
+    headline,
+  }
 }
 
 function diffNetwork(

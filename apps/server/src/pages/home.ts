@@ -43,6 +43,16 @@ export function SessionsPage({ email, sessions }: { email: string; sessions: Ses
                     </div>
                   </div>
                   <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
+                    ${s.regressionLevel && s.regressionBaselineId
+                      ? html`<a href="/sessions/${s.id}/compare/${s.regressionBaselineId}"
+                              title="${s.regressionHeadline ?? ''} (vs previous capture)"
+                              style="text-decoration: none;">
+                          <span class="badge"
+                                style="color:${regressionColor(s.regressionLevel)}; border-color:${regressionColor(s.regressionLevel)};">
+                            ${regressionGlyph(s.regressionLevel)} ${regressionLabel(s.regressionLevel)}
+                          </span>
+                        </a>`
+                      : ''}
                     ${s.verificationStatus === 'pass'
                       ? html`<span class="badge ok">✓ verified</span>`
                       : s.verificationStatus === 'fail'
@@ -60,6 +70,16 @@ export function SessionsPage({ email, sessions }: { email: string; sessions: Ses
           </div>`}
     `,
   })
+}
+
+function regressionColor(l: 'pass' | 'minor' | 'fail'): string {
+  return l === 'pass' ? '#1f9d55' : l === 'minor' ? '#b88300' : '#d64545'
+}
+function regressionGlyph(l: 'pass' | 'minor' | 'fail'): string {
+  return l === 'pass' ? '✓' : l === 'minor' ? '⚠' : '✗'
+}
+function regressionLabel(l: 'pass' | 'minor' | 'fail'): string {
+  return l === 'pass' ? 'no regression' : l === 'minor' ? 'changed' : 'regression'
 }
 
 function truncate(s: string, n: number): string {

@@ -152,6 +152,9 @@ export interface SessionListItem {
   uploadedAt: number
   hasGeneratedSpec: boolean
   verificationStatus?: 'pass' | 'fail' | 'error'
+  regressionLevel?: RegressionLevel
+  regressionHeadline?: string
+  regressionBaselineId?: string
 }
 
 export interface SessionListResponse {
@@ -172,6 +175,28 @@ export interface StoredSession {
   verifyScreenshotMeta?: VerifyScreenshotMeta[]
   generated?: GenerateResponse & { generatedAt: number }
   verification?: VerificationResult
+  // Compact diff against the previous session of the same host, computed
+  // at upload time and surfaced as a regression badge on the sessions list.
+  regression?: RegressionSummary
+}
+
+export type RegressionLevel = 'pass' | 'minor' | 'fail'
+
+export interface RegressionSummary {
+  baselineId: string
+  baselineUploadedAt: number
+  level: RegressionLevel
+  actionsKept: number
+  actionsAdded: number
+  actionsRemoved: number
+  consoleErrorDelta: number
+  exceptionDelta: number
+  networkOnlyInBaseline: number
+  networkOnlyInCurrent: number
+  networkStatusChanges: number
+  finalUrlMatch: boolean
+  // One-line summary fit for a badge tooltip
+  headline: string
 }
 
 export interface VerifyStep {

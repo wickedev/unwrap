@@ -84,6 +84,24 @@ export async function getScreenshot(
   return env.SESSIONS.get(`shot:${email}:${sessionId}:${ref}`, 'arrayBuffer')
 }
 
+// Most-recent session for `email` + `host` that was uploaded strictly
+// BEFORE `beforeUploadedAt`. Used to auto-pick a baseline for the new
+// upload's regression summary.
+export async function findPreviousSession(
+  env: Env,
+  email: string,
+  host: string,
+  beforeUploadedAt: number,
+): Promise<StoredSession | null> {
+  const items = await listSessions(env, email)
+  const candidates = items
+    .filter((s) => s.host === host && s.uploadedAt < beforeUploadedAt)
+    .sort((a, b) => b.uploadedAt - a.uploadedAt)
+  const top = candidates[0]
+  if (!top) return null
+  return getSession(env, email, top.id)
+}
+
 export async function listSessions(env: Env, email: string): Promise<SessionListItem[]> {
   if (!env.SESSIONS) return []
   const ids = await loadIndex(env, email)
@@ -150,6 +168,7 @@ function toListItem(record: StoredSession): SessionListItem {
         ? 'pass'
         : 'fail'
     : undefined
+  const r = record.regression
   return {
     id: record.id,
     host: record.summary.meta.host,
@@ -159,5 +178,12 @@ function toListItem(record: StoredSession): SessionListItem {
     uploadedAt: record.uploadedAt,
     hasGeneratedSpec: !!record.generated?.spec,
     ...(verificationStatus ? { verificationStatus } : {}),
+    ...(r
+      ? {
+          regressionLevel: r.level,
+          regressionHeadline: r.headline,
+          regressionBaselineId: r.baselineId,
+        }
+      : {}),
   }
 }
