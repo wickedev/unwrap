@@ -51,6 +51,16 @@ export function ProjectPage({
 
       <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
         <div style="min-width: 0;">
+          <strong style="font-size: 13px;">📡 WebSocket channels</strong>
+          <div class="meta" style="font-size: 11px; margin-top: 2px;">
+            Realtime traffic captured alongside the REST/GraphQL surface — channels grouped by endpoint, frames bucketed into message types using the JSON discriminator field. The protocol that the API inventory misses.
+          </div>
+        </div>
+        <a class="btn secondary" href="/projects/${encodeURIComponent(digest.host)}/websockets">→ Open WS inventory</a>
+      </div>
+
+      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+        <div style="min-width: 0;">
           <strong style="font-size: 13px;">🧹 Code coverage / dead-code map</strong>
           <div class="meta" style="font-size: 11px; margin-top: 2px;">
             Per-file used vs. total bytes from V8 PreciseCoverage + CSS rule usage, aggregated across every captured session. Reveals which chunks of the bundle are dead weight at the URLs the user actually visited.

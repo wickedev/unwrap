@@ -34,6 +34,38 @@ export interface SessionSummary {
   // Only present when the extension successfully collected coverage
   // (requires Profiler / CSS CDP domain access).
   coverage?: CoverageSummary
+  // WebSocket channels opened during the session. Each channel groups its
+  // observed frames into distinct message types (keyed by a JSON discriminator
+  // when present) with per-type counts and inferred payload shapes.
+  wsChannels?: WsChannel[]
+}
+
+export interface WsChannel {
+  url: string
+  openedAt: number
+  closedAt?: number
+  sendCount: number
+  recvCount: number
+  // Bytes sent / received aggregated from frame payloadSize.
+  sendBytes: number
+  recvBytes: number
+  messageTypes: WsMessageType[]
+}
+
+export interface WsMessageType {
+  // Heuristic key extracted from the payload — first match wins on the
+  // common discriminator fields: type, op, method, kind, command, event.
+  // Falls back to '__opaque__' for non-JSON or shapeless payloads.
+  key: string
+  direction: 'send' | 'recv' | 'both'
+  count: number
+  bytes: number
+  // Up to one captured payload preserved verbatim (truncated to ~2KB)
+  // so the reader can sanity-check the inferred shape.
+  sample?: string
+  // TypeScript-flavored type literal inferred from up to 10 sample
+  // payloads, same inference machine the REST inventory uses.
+  inferredShape?: string
 }
 
 export interface CoverageSummary {
