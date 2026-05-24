@@ -67,6 +67,18 @@ export function SessionDetailPage({
         </Section>
       )}
 
+      {!session.video && session.videoError && (
+        <Section title="Tab recording">
+          <Card className="border-[hsl(var(--warning))]/40 bg-[hsl(var(--warning))]/5">
+            <CardContent className="p-4">
+              <div className="text-sm">
+                <strong className="text-[hsl(var(--warning))]">⚠️ Video not captured.</strong> {session.videoError}
+              </div>
+            </CardContent>
+          </Card>
+        </Section>
+      )}
+
       <Section title="Capture summary">
         <Card>
           <CardContent className="p-4">

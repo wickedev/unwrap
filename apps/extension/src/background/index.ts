@@ -190,11 +190,30 @@ async function startSession(tabId: number): Promise<SessionMeta> {
   }
   // Fire-and-forget video recording — non-fatal if it fails (chrome://
   // pages, PDF viewer, etc.). We just log and let the rest of the
-  // session capture proceed without video.
-  void startVideoRecording(sessionId, tabId).catch((e) => {
-    console.warn('[unwrap] video recording could not start', e)
+  // session capture proceed without video. Failure reason is stashed on
+  // the session so the server UI can surface it.
+  void startVideoRecording(sessionId, tabId).catch(async (e) => {
+    const message = e instanceof Error ? e.message : String(e)
+    console.warn('[unwrap] video recording could not start', message)
+    try {
+      const m = await getSession(sessionId)
+      if (m) {
+        m.videoError = friendlyVideoError(message)
+        await putSession(m)
+      }
+    } catch {}
   })
   return meta
+}
+
+function friendlyVideoError(raw: string): string {
+  if (/Extension has not been invoked/i.test(raw) || /activeTab/i.test(raw)) {
+    return 'Video capture was blocked: click the Unwrap toolbar icon on this tab BEFORE clicking Start (Chrome\'s activeTab requirement). Screenshots and network capture still work.'
+  }
+  if (/chrome:\/\//i.test(raw) || /Chrome pages cannot be captured/i.test(raw)) {
+    return 'Video capture is not allowed on this kind of page (chrome://, Web Store, PDF viewer).'
+  }
+  return `Video capture failed: ${raw}`
 }
 
 async function stopSession(

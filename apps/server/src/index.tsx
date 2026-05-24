@@ -539,6 +539,19 @@ app.post('/api/sessions/:id/video', async (c) => {
   return c.json({ ok: true, sizeBytes: buf.byteLength })
 })
 
+app.post('/api/sessions/:id/video-error', async (c) => {
+  const id = c.req.param('id')
+  const email = c.get('email')
+  const record = await getStoredSession(c.env, email, id)
+  if (!record) return c.json(err('Not found'), 404)
+  const body = (await c.req.json().catch(() => ({}))) as { message?: string }
+  const message = typeof body.message === 'string' ? body.message.slice(0, 500) : ''
+  if (!message) return c.json(err('message required'), 400)
+  record.videoError = message
+  await putSession(c.env, record)
+  return c.json({ ok: true })
+})
+
 app.get('/api/sessions/:id/video', async (c) => {
   const email = await readEmail(c)
   if (!email) return c.json(err('Not signed in'), 401)

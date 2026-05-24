@@ -64,6 +64,21 @@ export async function uploadSessionToServer(sessionId: string): Promise<UploadRe
 
   const result = (await resp.json()) as UploadSessionResponse
 
+  // Surface any video-capture failure reason to the server so the
+  // session page can show a clear hint instead of silently omitting
+  // the video section.
+  if (meta.videoError) {
+    try {
+      await authedFetch(`/api/sessions/${encodeURIComponent(result.id)}/video-error`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: meta.videoError }),
+      })
+    } catch (e) {
+      console.warn('[unwrap-video] failed to post videoError', e)
+    }
+  }
+
   // Ship the captured tab video as a separate raw-bytes POST so the
   // primary upload payload stays small. Best-effort — a video failure
   // doesn't fail the session upload.

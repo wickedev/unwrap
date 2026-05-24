@@ -332,6 +332,10 @@ export interface StoredSession {
     durationMs: number
     uploadedAt: number
   }
+  // Set when video capture was attempted but failed on the client (e.g.
+  // activeTab not granted, chrome:// page). The session page surfaces
+  // this as a hint instead of silently omitting the video section.
+  videoError?: string
 }
 
 export type RegressionLevel = 'pass' | 'minor' | 'fail'

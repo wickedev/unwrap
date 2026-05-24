@@ -37,6 +37,10 @@ export interface SessionMeta {
     sizeBytes: number
     durationMs: number
   }
+  // Set when video capture was attempted but failed (most commonly:
+  // activeTab not granted on the target tab). Surfaced on the server
+  // session page so the user knows to retry differently next time.
+  videoError?: string
 }
 
 export type UploadStatus =
