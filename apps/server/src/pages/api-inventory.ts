@@ -46,6 +46,18 @@ export function ApiInventoryPage({
         ${kpi('Hosts', new Set(groups.map((g) => g.hostname)).size, 'var(--muted)')}
       </div>
 
+      ${calls.length > 0 || (session.summary.staticAssets?.length ?? 0) > 0
+        ? html`<div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; border-color: var(--accent);">
+            <div style="min-width: 0;">
+              <strong style="font-size: 13px;">↓ Runnable local clone (this session)</strong>
+              <div class="meta" style="font-size: 11px; margin-top: 2px;">
+                Single zip: captured frontend + mock server + <code>run.sh</code>. Unzip → <code>./run.sh</code> → <code>http://localhost:8080</code>. For an aggregated clone across every capture of this host, see the project page.
+              </div>
+            </div>
+            <a class="btn" href="/sessions/${session.id}/clone.zip" download>↓ Download clone.zip</a>
+          </div>`
+        : ''}
+
       ${calls.length > 0
         ? html`<div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
             <div style="min-width: 0;">

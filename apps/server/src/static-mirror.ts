@@ -11,6 +11,21 @@ import type { ApiCall, StaticAsset, StoredSession } from '@unwrap/protocol'
 // rewrite absolute / same-origin URLs to relative paths so the mirror
 // works behind a plain `python -m http.server`.
 export function buildStaticMirrorZip(session: StoredSession): { filename: string; bytes: Uint8Array } {
+  const { files } = buildStaticMirrorFiles(session)
+  const bytes = zipSync(files, { level: 6 })
+  const filename = `mirror-${safeHost(session.summary.meta.host)}-${session.id.slice(0, 8)}.zip`
+  return { filename, bytes }
+}
+
+// Same work as buildStaticMirrorZip but returns the raw file map so a
+// caller can compose it into a larger archive (e.g., the clone bundle
+// places these files under `frontend/`). Two-pass rewrite logic is here.
+export function buildStaticMirrorFiles(session: StoredSession): {
+  files: Record<string, Uint8Array>
+  inlined: { url: string; path: string; mime: string; size: number }[]
+  urlOnly: { url: string; mime: string; size: number; status: number }[]
+  hasSitemap: boolean
+} {
   const assets = session.summary.staticAssets ?? []
 
   // Pass 1 — assign a target path to every inlinable asset.
@@ -60,10 +75,7 @@ export function buildStaticMirrorZip(session: StoredSession): { filename: string
     files['sitemap.html'] = strToU8(renderSitemap(session, pages))
   }
   files['MIRROR.md'] = strToU8(renderReadme(session, inlined, urlOnly, rewriteCounts, hasSitemap))
-
-  const bytes = zipSync(files, { level: 6 })
-  const filename = `mirror-${safeHost(session.summary.meta.host)}-${session.id.slice(0, 8)}.zip`
-  return { filename, bytes }
+  return { files, inlined, urlOnly, hasSitemap }
 }
 
 // ---- URL rewriting ----------------------------------------------------------

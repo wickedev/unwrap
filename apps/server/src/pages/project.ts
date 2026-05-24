@@ -29,6 +29,16 @@ export function ProjectPage({
         ${kpi('Static assets', digest.staticAssets.length, 'var(--muted)')}
       </div>
 
+      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; border-color: var(--accent);">
+        <div style="min-width: 0;">
+          <strong style="font-size: 13px;">↓ Runnable local clone</strong>
+          <div class="meta" style="font-size: 11px; margin-top: 2px;">
+            One zip with the latest captured frontend, an aggregated mock for every API ever called, and <code>run.sh</code> that starts both. Unzip → <code>./run.sh</code> → open <code>http://localhost:8080</code>. The complete reverse-engineering deliverable.
+          </div>
+        </div>
+        <a class="btn" href="/projects/${encodeURIComponent(digest.host)}/clone.zip" download>↓ Download clone.zip</a>
+      </div>
+
       ${digest.graphqlOps.length > 0
         ? html`<div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
             <div style="min-width: 0;">

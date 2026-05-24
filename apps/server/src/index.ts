@@ -40,6 +40,7 @@ import { buildStaticMirrorZip } from './static-mirror'
 import { extractGraphqlOperations } from './graphql-extract'
 import { aggregateProject } from './project-aggregate'
 import { ProjectPage } from './pages/project'
+import { buildCloneBundle } from './clone-bundle'
 import { verifySession } from './verify'
 import { diffSessions, summarizeRegression } from './sessiondiff'
 import { computeCrossSessionVisualDiff } from './visualcrossdiff'
@@ -503,6 +504,62 @@ app.get('/projects/:host/graphql.txt', async (c) => {
     headers: {
       'content-type': 'text/plain; charset=utf-8',
       'content-disposition': `attachment; filename="${artifact.filename}"`,
+      'cache-control': 'private, no-store',
+    },
+  })
+})
+
+app.get('/projects/:host/clone.zip', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const sessions = await loadProjectSessions(c.env, email, host)
+  if (sessions.length === 0) return c.json(err('Not found'), 404)
+  // Most-recent session supplies the frontend (latest UI we have);
+  // aggregated synthetic session supplies the mock (every endpoint).
+  const mostRecent = [...sessions].sort((a, b) => b.uploadedAt - a.uploadedAt)[0]!
+  const allCalls = sessions.flatMap((s) => s.summary.apiCalls ?? [])
+  const synthetic: StoredSession = {
+    ...sessions[0]!,
+    id: `project-${host}`,
+    summary: {
+      ...sessions[0]!.summary,
+      apiCalls: allCalls,
+      meta: { ...sessions[0]!.summary.meta, host },
+    },
+  }
+  const safeHost = host.replace(/[^a-zA-Z0-9.-]/g, '-').slice(0, 60)
+  const { filename, bytes } = buildCloneBundle({
+    staticSource: mostRecent,
+    mockSource: synthetic,
+    label: `Local clone of ${host}`,
+    filenameStem: `clone-${safeHost}`,
+  })
+  return new Response(bytes, {
+    headers: {
+      'content-type': 'application/zip',
+      'content-disposition': `attachment; filename="${filename}"`,
+      'cache-control': 'private, no-store',
+    },
+  })
+})
+
+app.get('/sessions/:id/clone.zip', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const record = await getStoredSession(c.env, email, c.req.param('id'))
+  if (!record) return c.json(err('Not found'), 404)
+  const safeHost = (record.summary.meta.host || 'session').replace(/[^a-zA-Z0-9.-]/g, '-').slice(0, 60)
+  const { filename, bytes } = buildCloneBundle({
+    staticSource: record,
+    mockSource: record,
+    label: `Local clone of session ${record.id.slice(0, 8)} (${record.summary.meta.host || 'no host'})`,
+    filenameStem: `clone-${safeHost}-${record.id.slice(0, 8)}`,
+  })
+  return new Response(bytes, {
+    headers: {
+      'content-type': 'application/zip',
+      'content-disposition': `attachment; filename="${filename}"`,
       'cache-control': 'private, no-store',
     },
   })
