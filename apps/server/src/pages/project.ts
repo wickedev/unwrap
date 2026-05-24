@@ -78,6 +78,7 @@ export function ProjectPage({
         miniCard(link('/test-plan'), '📋 AI test plan', 'Gemini proposes prioritized scenarios from coverage gaps', { primary: true }),
         miniCard(link('/test-coverage'), '✅ Test coverage map', 'Untested routes/endpoints prioritized by traffic'),
         miniCard(link('/tests'), '🧪 Canonical test suite', 'Curate canonical specs; download as runnable Playwright project'),
+        miniCard(link('/test-runs'), '📈 Test runs', 'Pass/fail history from CI · flaky + failing detection'),
       ])}
 
       <!-- EXPORT & INTEGRATE section -->

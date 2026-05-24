@@ -80,6 +80,14 @@ import { setSlackConfig, getSlackConfig, deleteSlackConfig } from './storage/sla
 import { postSlackMessage } from './slack'
 import { ProjectIntegrationsPage } from './pages/project-integrations'
 import {
+  appendTestRun,
+  listRecentTestRuns,
+  newTestRunId,
+} from './storage/test-runs'
+import { normalizeTestRunIngest } from './test-result-ingest'
+import { analyzeTestStability } from './test-run-analysis'
+import { TestRunsPage } from './pages/test-runs'
+import {
   forgetInstallation,
   getInstallation,
   postOrUpdateCommentAsApp,
@@ -1100,6 +1108,43 @@ app.get('/share/:token/tests.zip', async (c) => {
 })
 
 // ---------- Per-project integrations (Linear / Slack / Sentry shortcut) ----
+
+// ---------- Test execution feedback ----------
+
+// CI POSTs Playwright JSON reporter output (or a flat specs array) here
+// — authenticated with the standard Unwrap API token. We normalize,
+// store, and surface stability rollups on the project's test-runs page.
+app.post('/api/test-results', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.json(err('Not authenticated'), 401)
+  let body: unknown
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json(err('Body must be JSON'), 400)
+  }
+  const normalized = normalizeTestRunIngest(body)
+  if ('error' in normalized) return c.json(err(normalized.error), 400)
+  const id = newTestRunId()
+  const run = { id, ...normalized }
+  await appendTestRun(c.env, email, run.host, run)
+  return c.json({ id, host: run.host, totals: run.totals })
+})
+
+app.get('/projects/:host/test-runs', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const runs = await listRecentTestRuns(c.env, email, host, 50)
+  const stability = analyzeTestStability(runs)
+  return c.html(TestRunsPage({
+    email,
+    host,
+    runs,
+    stability,
+    ingestPath: `${originOf(c.req.url)}/api/test-results`,
+  }))
+})
 
 app.get('/projects/:host/integrations', async (c) => {
   const email = await readEmail(c)
