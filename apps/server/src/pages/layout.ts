@@ -86,7 +86,7 @@ export function Layout({ title, email, body, scripts }: LayoutProps): Renderable
         : ''}
       <div class="user">
         ${email
-          ? html`${email} <a href="/auth/sign-out">Sign out</a>`
+          ? html`${email} <a href="/settings/tokens">API tokens</a> <a href="/auth/sign-out">Sign out</a>`
           : html`<a href="/auth/google/start?mode=web">Sign in</a>`}
       </div>
     </header>

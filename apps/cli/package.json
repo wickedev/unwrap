@@ -1,0 +1,23 @@
+{
+  "name": "@unwrap/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "unwrap": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --noEmit",
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@unwrap/protocol": "workspace:*",
+    "playwright": "^1.49.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.22.0",
+    "typescript": "^5.7.0"
+  }
+}

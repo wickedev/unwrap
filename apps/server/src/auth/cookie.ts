@@ -1,6 +1,7 @@
 import type { Context } from 'hono'
 import { getSignedCookie, setSignedCookie, deleteCookie } from 'hono/cookie'
 import { verifyToken } from './jwt'
+import { resolveApiToken } from '../storage/api-tokens'
 
 export const COOKIE_NAME = 'unwrap_session'
 const MAX_AGE_SECONDS = 7 * 24 * 60 * 60
@@ -41,12 +42,15 @@ export async function readEmail(c: AnyContext): Promise<string | null> {
   const auth = c.req.header('authorization') ?? ''
   const m = auth.match(/^Bearer (.+)$/)
   if (m) {
+    const presented = m[1]!
     try {
-      const claims = await verifyToken(m[1]!, c.env.JWT_SECRET)
+      const claims = await verifyToken(presented, c.env.JWT_SECRET)
       return claims.email
     } catch {
-      // fall through
+      // Not a JWT — could still be a long-lived API token (CLI / CI).
     }
+    const apiTokenRec = await resolveApiToken(c.env, presented)
+    if (apiTokenRec) return apiTokenRec.email
   }
   return null
 }

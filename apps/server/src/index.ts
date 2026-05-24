@@ -57,6 +57,8 @@ import { aggregateWsChannels } from './project-websockets'
 import { ProjectWebSocketsPage } from './pages/project-websockets'
 import { searchSessions } from './search'
 import { SearchPage } from './pages/search'
+import { listApiTokens, mintApiToken, revokeApiToken } from './storage/api-tokens'
+import { ApiTokensPage } from './pages/api-tokens'
 import { analyzeProjectSecurity } from './project-security'
 import { ProjectSecurityPage } from './pages/project-security'
 import {
@@ -442,6 +444,43 @@ app.get('/sessions', async (c) => {
   await backfillRegressions(c.env, email)
   const sessions = await listSessions(c.env, email)
   return c.html(SessionsPage({ email, sessions }))
+})
+
+// ---------- API tokens (long-lived bearer for CLI / CI) ----------
+
+app.get('/settings/tokens', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const tokens = await listApiTokens(c.env, email)
+  return c.html(ApiTokensPage({ email, tokens, origin: originOf(c.req.url) }))
+})
+
+app.post('/api/tokens', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.json(err('Not authenticated'), 401)
+  const form = (await c.req.parseBody().catch(() => ({}))) as Record<string, string | File | undefined>
+  const labelRaw = form['label']
+  const label = typeof labelRaw === 'string' && labelRaw.trim() ? labelRaw.trim() : 'unnamed'
+  const fresh = await mintApiToken(c.env, email, label)
+  // If the request came from the settings page form, show the page again
+  // with the new token highlighted so the user can copy it. JSON callers
+  // (HTTP clients) get the JSON directly.
+  if ((c.req.header('accept') ?? '').includes('text/html')) {
+    const tokens = await listApiTokens(c.env, email)
+    return c.html(ApiTokensPage({ email, tokens, freshlyMinted: fresh, origin: originOf(c.req.url) }))
+  }
+  return c.json(fresh)
+})
+
+app.post('/api/tokens/:token/revoke', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const token = c.req.param('token')
+  await revokeApiToken(c.env, email, token)
+  if ((c.req.header('accept') ?? '').includes('text/html')) {
+    return c.redirect('/settings/tokens', 302)
+  }
+  return c.json({ revoked: true })
 })
 
 app.get('/search', async (c) => {
