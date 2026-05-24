@@ -49,6 +49,8 @@ import { buildProjectGraph } from './project-graph'
 import { ProjectGraphPage } from './pages/project-graph'
 import { buildProjectHeatmaps } from './project-heatmap'
 import { ProjectHeatmapPage } from './pages/project-heatmap'
+import { compareProjects } from './project-compare'
+import { ProjectComparePage } from './pages/project-compare'
 import { verifySession } from './verify'
 import { diffSessions, summarizeRegression } from './sessiondiff'
 import { computeCrossSessionVisualDiff } from './visualcrossdiff'
@@ -483,7 +485,11 @@ app.get('/projects/:host', async (c) => {
   const sessions = await loadProjectSessions(c.env, email, host)
   if (sessions.length === 0) return c.html(LoginPage(), 404)
   const digest = aggregateProject(host, sessions)
-  return c.html(ProjectPage({ email, digest }))
+  // List the other hosts the user has captured so the picker on the project
+  // page can offer comparisons. Cheap KV metadata list, no full reads.
+  const items = await listSessions(c.env, email)
+  const otherHosts = [...new Set(items.map((s) => s.host).filter((h) => h && h !== host))].sort()
+  return c.html(ProjectPage({ email, digest, otherHosts }))
 })
 
 app.get('/projects/:host/graphql.txt', async (c) => {
@@ -597,6 +603,24 @@ app.get('/projects/:host/api/mock', async (c) => {
       'cache-control': 'private, no-store',
     },
   })
+})
+
+app.get('/projects/:host/diff/:otherHost', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const leftHost = decodeURIComponent(c.req.param('host'))
+  const rightHost = decodeURIComponent(c.req.param('otherHost'))
+  const [leftSessions, rightSessions] = await Promise.all([
+    loadProjectSessions(c.env, email, leftHost),
+    loadProjectSessions(c.env, email, rightHost),
+  ])
+  if (leftSessions.length === 0 || rightSessions.length === 0) {
+    return c.html(LoginPage(), 404)
+  }
+  const left = aggregateProject(leftHost, leftSessions)
+  const right = aggregateProject(rightHost, rightSessions)
+  const diff = compareProjects(left, right)
+  return c.html(ProjectComparePage({ email, diff }))
 })
 
 app.get('/projects/:host/heatmap', async (c) => {

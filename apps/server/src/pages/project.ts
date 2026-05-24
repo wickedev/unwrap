@@ -7,9 +7,11 @@ import { buildRouteForest, renderRouteForestHtml, ROUTE_TREE_CSS } from '../rout
 export function ProjectPage({
   email,
   digest,
+  otherHosts = [],
 }: {
   email: string
   digest: ProjectDigest
+  otherHosts?: string[]
 }): Renderable {
   const restEndpoints = digest.endpoints.filter((e) => !e.graphql)
   const graphqlEndpoints = digest.endpoints.filter((e) => e.graphql)
@@ -29,6 +31,23 @@ export function ProjectPage({
         ${kpi('GraphQL ops', graphqlEndpoints.length, '#7c4ac2')}
         ${kpi('Static assets', digest.staticAssets.length, 'var(--muted)')}
       </div>
+
+      ${otherHosts.length > 0
+        ? html`<div class="card" style="margin-bottom: 16px;">
+            <div style="display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; margin-bottom: 4px;">
+              <strong style="font-size: 13px;">⇄ Compare with another project</strong>
+              <span class="meta" style="font-size: 11px;">Diff endpoints / routes / GraphQL ops / response schemas against another host.</span>
+            </div>
+            <form method="get" action="/projects/${encodeURIComponent(digest.host)}/diff/__placeholder__" onsubmit="event.preventDefault(); const t = this.querySelector('select').value; if (t) window.location.href = '/projects/${encodeURIComponent(digest.host)}/diff/' + encodeURIComponent(t)" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px;">
+              <label class="meta" style="font-size: 12px;">vs.</label>
+              <select required style="padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit;">
+                <option value="">— pick a project —</option>
+                ${otherHosts.map((h) => html`<option value="${h}">${h}</option>`)}
+              </select>
+              <button class="btn secondary" type="submit">Open diff →</button>
+            </form>
+          </div>`
+        : ''}
 
       <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
         <div style="min-width: 0;">
