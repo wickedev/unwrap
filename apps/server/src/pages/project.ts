@@ -51,6 +51,16 @@ export function ProjectPage({
 
       <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
         <div style="min-width: 0;">
+          <strong style="font-size: 13px;">🧹 Code coverage / dead-code map</strong>
+          <div class="meta" style="font-size: 11px; margin-top: 2px;">
+            Per-file used vs. total bytes from V8 PreciseCoverage + CSS rule usage, aggregated across every captured session. Reveals which chunks of the bundle are dead weight at the URLs the user actually visited.
+          </div>
+        </div>
+        <a class="btn secondary" href="/projects/${encodeURIComponent(digest.host)}/coverage">→ Open coverage</a>
+      </div>
+
+      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+        <div style="min-width: 0;">
           <strong style="font-size: 13px;">🎯 Click heatmap</strong>
           <div class="meta" style="font-size: 11px; margin-top: 2px;">
             Per-page heatmap of click positions, overlaid on a captured screenshot. Requires the new extension build with position capture — reload + record a fresh session if you don't see data.

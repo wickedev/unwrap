@@ -51,6 +51,8 @@ import { buildProjectHeatmaps } from './project-heatmap'
 import { ProjectHeatmapPage } from './pages/project-heatmap'
 import { compareProjects } from './project-compare'
 import { ProjectComparePage } from './pages/project-compare'
+import { aggregateCoverage } from './project-coverage'
+import { ProjectCoveragePage } from './pages/project-coverage'
 import { verifySession } from './verify'
 import { diffSessions, summarizeRegression } from './sessiondiff'
 import { computeCrossSessionVisualDiff } from './visualcrossdiff'
@@ -603,6 +605,16 @@ app.get('/projects/:host/api/mock', async (c) => {
       'cache-control': 'private, no-store',
     },
   })
+})
+
+app.get('/projects/:host/coverage', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const sessions = await loadProjectSessions(c.env, email, host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const coverage = aggregateCoverage(sessions)
+  return c.html(ProjectCoveragePage({ email, host, coverage }))
 })
 
 app.get('/projects/:host/diff/:otherHost', async (c) => {

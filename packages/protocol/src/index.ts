@@ -29,6 +29,28 @@ export interface SessionSummary {
   // image/font/binary assets. Powers the /sessions/:id/static.zip
   // mirror download.
   staticAssets?: StaticAsset[]
+  // V8 precise coverage + CSS rule usage summary distilled from the
+  // CoverageEvent at upload time. Reveals dead code per script/stylesheet.
+  // Only present when the extension successfully collected coverage
+  // (requires Profiler / CSS CDP domain access).
+  coverage?: CoverageSummary
+}
+
+export interface CoverageSummary {
+  jsUsedBytes: number
+  jsTotalBytes: number
+  cssUsedBytes: number
+  cssTotalBytes: number
+  // Per-file breakdown, ordered by descending totalBytes so the biggest
+  // dead-code offenders are at the top. Capped to ~50 entries on upload.
+  files: CoverageFile[]
+}
+
+export interface CoverageFile {
+  url: string
+  kind: 'js' | 'css'
+  totalBytes: number
+  usedBytes: number
 }
 
 export interface StaticAsset {
