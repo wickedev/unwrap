@@ -22,13 +22,13 @@ export async function collectApiCalls(
   // pointer. Walk both, keyed by requestId.
   const requests = new Map<string, RequestEvent>()
   const responseMeta = new Map<string, ResponseEvent>()
-  const responseBodyRefs = new Map<string, { ref: string; size?: number }>()
+  const responseBodyRefs = new Map<string, { ref: string; size?: number; ts: number }>()
 
   for (const ev of events) {
     if (ev.type === 'request') {
       requests.set(ev.requestId, ev)
     } else if (ev.type === 'response') {
-      if (ev.bodyRef) responseBodyRefs.set(ev.requestId, { ref: ev.bodyRef, size: ev.bodySize })
+      if (ev.bodyRef) responseBodyRefs.set(ev.requestId, { ref: ev.bodyRef, size: ev.bodySize, ts: ev.ts })
       else if (ev.status > 0) responseMeta.set(ev.requestId, ev)
     }
   }
@@ -71,6 +71,14 @@ export async function collectApiCalls(
     if (requestBody) call.requestBody = requestBody
     if (responseBody) call.responseBody = responseBody
     if (bodyEntry?.size != null) call.responseSize = bodyEntry.size
+
+    // Latency = max(meta-response ts, body-event ts) - request ts. The
+    // body event is closer to "transfer complete"; some responses only
+    // have a meta event though (no body captured), so fall back to that.
+    const completeTs = Math.max(resp?.ts ?? 0, bodyEntry?.ts ?? 0)
+    if (completeTs > 0 && req.ts > 0 && completeTs >= req.ts) {
+      call.latencyMs = completeTs - req.ts
+    }
 
     const gql = detectGraphql(req)
     if (gql) call.graphql = gql

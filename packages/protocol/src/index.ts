@@ -153,6 +153,11 @@ export interface ApiCall {
     operationName?: string
     queryHash?: string
   }
+  // Wall-clock duration in milliseconds from request issuance to the
+  // response body being fully received. Optional because some sessions
+  // (older captures, or hops where we never saw the matching response)
+  // don't have it.
+  latencyMs?: number
 }
 
 export interface SerializedAction {

@@ -63,6 +63,8 @@ import { analyzeProjectSecurity } from './project-security'
 import { ProjectSecurityPage } from './pages/project-security'
 import { aggregateA11y } from './project-a11y'
 import { ProjectA11yPage } from './pages/project-a11y'
+import { analyzeProjectPerformance } from './project-performance'
+import { ProjectPerformancePage } from './pages/project-performance'
 import {
   getOrCreateShareToken,
   readShareToken,
@@ -901,6 +903,25 @@ app.get('/projects/:host/api/mock', async (c) => {
       'cache-control': 'private, no-store',
     },
   })
+})
+
+app.get('/projects/:host/performance', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const sessions = await loadProjectSessions(c.env, email, host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const report = analyzeProjectPerformance(host, sessions)
+  return c.html(ProjectPerformancePage({ email, host, report }))
+})
+
+app.get('/share/:token/performance', async (c) => {
+  const r = await resolveShare(c.env, c.req.param('token'))
+  if (!r) return c.html(LoginPage(), 404)
+  const sessions = await loadProjectSessions(c.env, r.email, r.host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const report = analyzeProjectPerformance(r.host, sessions)
+  return c.html(ProjectPerformancePage({ email: '', host: r.host, report }))
 })
 
 app.get('/projects/:host/a11y', async (c) => {

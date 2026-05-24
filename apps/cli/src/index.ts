@@ -110,6 +110,7 @@ async function main(): Promise<void> {
     if (!isApiLike(req.method, resp.url, resp.mimeType)) continue
     const responseBody = resp.bodyResolver ? await resp.bodyResolver() : undefined
     const requestBody = req.postData
+    const latencyMs = resp.ts >= req.ts ? resp.ts - req.ts : undefined
     const call: ApiCall = {
       ts: req.ts,
       method: req.method,
@@ -120,6 +121,7 @@ async function main(): Promise<void> {
       responseMimeType: resp.mimeType,
       ...(responseBody !== undefined ? { responseBody } : {}),
       responseHeaders: resp.headers,
+      ...(latencyMs !== undefined ? { latencyMs } : {}),
     }
     const gql = detectGraphql(req.method, req.url, requestBody)
     if (gql) call.graphql = gql

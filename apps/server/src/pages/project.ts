@@ -99,6 +99,16 @@ export function ProjectPage({
 
       <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
         <div style="min-width: 0;">
+          <strong style="font-size: 13px;">⚡ Performance</strong>
+          <div class="meta" style="font-size: 11px; margin-top: 2px;">
+            Per-endpoint p50/p90/p95/max latency rolled up across every session. Slowest individual calls + N+1 pattern detection (≥4 hits to the same endpoint within 1s). Latency = request → response body complete, via captured CDP timestamps.
+          </div>
+        </div>
+        <a class="btn secondary" href="${link('/performance')}">→ Open performance</a>
+      </div>
+
+      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+        <div style="min-width: 0;">
           <strong style="font-size: 13px;">♿ Accessibility findings</strong>
           <div class="meta" style="font-size: 11px; margin-top: 2px;">
             Runtime audit from captured AX trees: missing button/link names, alt text, form labels, focusable-but-hidden elements, duplicate ids, heading-level skips. Reflects what the user actually saw.
