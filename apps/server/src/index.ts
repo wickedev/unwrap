@@ -69,6 +69,7 @@ import { analyzeTestCoverage } from './test-coverage'
 import { TestCoveragePage } from './pages/test-coverage'
 import { loadOrGenerateTestPlan, readCachedTestPlan } from './project-test-plan'
 import { TestPlanPage } from './pages/test-plan'
+import { buildSessionPrComment } from './pr-comment'
 import {
   addCanonicalTest,
   listCanonicalTests,
@@ -1247,6 +1248,38 @@ app.get('/projects/:host/postman.json', async (c) => {
     headers: {
       'content-type': 'application/json; charset=utf-8',
       'content-disposition': `attachment; filename="${filename}"`,
+      'cache-control': 'private, no-store',
+    },
+  })
+})
+
+// Returns a markdown PR comment summarizing what changed in this session
+// vs. every prior capture of the same host. The CLI fetches this after
+// uploading and POSTs it to GitHub (or any other commenter).
+app.get('/api/sessions/:id/comment.md', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.json(err('Not authenticated'), 401)
+  const record = await getStoredSession(c.env, email, c.req.param('id'))
+  if (!record) return c.json(err('Not found'), 404)
+  const host = record.summary.meta.host
+  const items = await listSessions(c.env, email)
+  const allIds = items.filter((s) => s.host === host).map((s) => s.id)
+  const allRecords = (await Promise.all(allIds.map((id) => getStoredSession(c.env, email, id))))
+    .filter((r): r is StoredSession => r !== null)
+  const baselineSessions = allRecords.filter((s) => s.uploadedAt < record.uploadedAt)
+  // Compare the JUST-uploaded session against the prior union. Including
+  // the current session in `currentSessions` would mask removals because
+  // prior captures still contribute their endpoints. The "what changed
+  // in this PR" question is per-session, not per-project-snapshot.
+  const md = buildSessionPrComment({
+    origin: originOf(c.req.url),
+    current: record,
+    baselineSessions,
+    currentSessions: [record],
+  })
+  return new Response(md, {
+    headers: {
+      'content-type': 'text/markdown; charset=utf-8',
       'cache-control': 'private, no-store',
     },
   })

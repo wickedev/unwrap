@@ -53,25 +53,55 @@ npx @unwrap/cli capture https://staging.example.com/login https://staging.exampl
 | `--viewport=WxH` | `1280x800` | Browser viewport |
 | `--timeout=MS` | `30000` | Per-URL page load timeout |
 
-## In GitHub Actions
+## In GitHub Actions (with auto PR comment)
 
 ```yaml
-- uses: actions/checkout@v4
-- uses: actions/setup-node@v4
-  with: { node-version: 20 }
-- run: npx --yes playwright@1.49 install --with-deps chromium
-- run: npx --yes @unwrap/cli capture
-    --server=${{ secrets.UNWRAP_SERVER }}
-    --token=${{ secrets.UNWRAP_TOKEN }}
-    --host=staging.example.com
-    https://staging.example.com/login
-    https://staging.example.com/dashboard
+permissions:
+  pull-requests: write   # so the default GITHUB_TOKEN can comment
+  contents: read
+
+jobs:
+  unwrap:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npx --yes playwright@1.49 install --with-deps chromium
+      - run: npx --yes @unwrap/cli capture
+          --server=${{ secrets.UNWRAP_SERVER }}
+          --token=${{ secrets.UNWRAP_TOKEN }}
+          --host=staging.example.com
+          --github-pr=${{ github.event.pull_request.number }}
+          https://staging.example.com/login
+          https://staging.example.com/dashboard
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-Then on the project page (or via `GET /projects/<host>/diff/<other>`),
-the new upload auto-diffs against the previous capture of the same
-host — endpoints added/removed/changed, response schema breaking
-changes, GraphQL variable type changes, etc.
+`GITHUB_REPOSITORY` is auto-set by Actions. The CLI also reads
+`GITHUB_TOKEN`, so the `env:` block is the only Actions-specific wiring
+you need.
+
+The comment edits in-place on subsequent CI runs of the same PR — every
+push updates the same comment rather than spamming new ones, via a
+hidden HTML marker (`<!-- unwrap:pr-comment:v1 -->`).
+
+Comment contents:
+- Summary line: how many endpoints added / removed / changed
+- 💥 Potentially breaking schema changes (per-endpoint field diff)
+- ✨ New endpoints
+- 🗑 Removed endpoints
+- 🔥 Endpoints returning new 5xx
+- 🧬 GraphQL operation changes
+- Links to the full project view + this session
+
+If this is the first capture for the host (no baseline), the comment is
+a "first capture" summary instead.
+
+Without a PR (e.g., on main-branch push): just omit the `--github-*`
+flags — the upload still happens and the diff is visible in the web UI.
 
 ## What gets captured
 

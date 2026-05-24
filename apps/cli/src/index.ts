@@ -19,6 +19,11 @@ interface CliArgs {
   viewportHeight: number
   // Page-load timeout per URL.
   timeoutMs: number
+  // GitHub PR commenting (PAT path). If set, after upload we fetch the
+  // comment markdown from the server and post/update on the PR.
+  githubRepo?: string  // owner/repo
+  githubPr?: number
+  githubToken?: string
 }
 
 main().catch((err) => {
@@ -201,6 +206,77 @@ async function main(): Promise<void> {
   }
   const result = (await resp.json()) as UploadSessionResponse
   console.log(`unwrap-cli: uploaded → ${result.url}`)
+
+  if (args.githubRepo && args.githubPr && args.githubToken) {
+    await postOrUpdateGithubComment({
+      server: stripTrailingSlash(args.server),
+      unwrapToken: args.token,
+      sessionId: result.id,
+      githubRepo: args.githubRepo,
+      githubPr: args.githubPr,
+      githubToken: args.githubToken,
+    })
+  }
+}
+
+const UNWRAP_COMMENT_MARKER = '<!-- unwrap:pr-comment:v1 -->'
+
+// Fetches the markdown comment from the Unwrap server (which knows how to
+// compute the diff against prior captures), then either creates a new
+// PR comment or — if a prior Unwrap comment exists on the PR — edits it
+// in place. The marker line keeps the workflow idempotent across multiple
+// CI runs on the same PR.
+async function postOrUpdateGithubComment(opts: {
+  server: string
+  unwrapToken: string
+  sessionId: string
+  githubRepo: string
+  githubPr: number
+  githubToken: string
+}): Promise<void> {
+  console.log(`unwrap-cli: posting PR comment to ${opts.githubRepo}#${opts.githubPr}`)
+  const mdResp = await fetch(`${opts.server}/api/sessions/${opts.sessionId}/comment.md`, {
+    headers: { 'authorization': `Bearer ${opts.unwrapToken}` },
+  })
+  if (!mdResp.ok) throw new Error(`could not fetch comment markdown: HTTP ${mdResp.status}`)
+  const body = await mdResp.text()
+
+  // Look for an existing comment with our marker so we edit-in-place.
+  const headers = {
+    'authorization': `Bearer ${opts.githubToken}`,
+    'accept': 'application/vnd.github+json',
+    'x-github-api-version': '2022-11-28',
+    'user-agent': 'unwrap-cli',
+  }
+  const listUrl = `https://api.github.com/repos/${opts.githubRepo}/issues/${opts.githubPr}/comments?per_page=100`
+  const listResp = await fetch(listUrl, { headers })
+  if (!listResp.ok) {
+    const t = await listResp.text()
+    throw new Error(`GitHub list-comments failed: HTTP ${listResp.status} ${t.slice(0, 200)}`)
+  }
+  const existing = (await listResp.json()) as { id: number; body?: string }[]
+  const prior = existing.find((c) => (c.body ?? '').startsWith(UNWRAP_COMMENT_MARKER))
+
+  if (prior) {
+    const updateUrl = `https://api.github.com/repos/${opts.githubRepo}/issues/comments/${prior.id}`
+    const r = await fetch(updateUrl, {
+      method: 'PATCH',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ body }),
+    })
+    if (!r.ok) throw new Error(`GitHub PATCH comment failed: HTTP ${r.status} ${(await r.text()).slice(0, 200)}`)
+    console.log(`unwrap-cli: updated existing PR comment (id ${prior.id})`)
+  } else {
+    const createUrl = `https://api.github.com/repos/${opts.githubRepo}/issues/${opts.githubPr}/comments`
+    const r = await fetch(createUrl, {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ body }),
+    })
+    if (!r.ok) throw new Error(`GitHub POST comment failed: HTTP ${r.status} ${(await r.text()).slice(0, 200)}`)
+    const created = (await r.json()) as { id: number; html_url?: string }
+    console.log(`unwrap-cli: created PR comment → ${created.html_url ?? `id ${created.id}`}`)
+  }
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -212,6 +288,9 @@ function parseArgs(argv: string[]): CliArgs {
     viewportWidth: 1280,
     viewportHeight: 800,
     timeoutMs: 30_000,
+    ...(process.env['GITHUB_REPOSITORY'] ? { githubRepo: process.env['GITHUB_REPOSITORY'] } : {}),
+    ...(process.env['UNWRAP_PR_NUMBER'] ? { githubPr: Number(process.env['UNWRAP_PR_NUMBER']) } : {}),
+    ...(process.env['GITHUB_TOKEN'] ? { githubToken: process.env['GITHUB_TOKEN'] } : {}),
   }
   let i = 0
   // First positional is the subcommand; we only support `capture` for now,
@@ -230,6 +309,12 @@ function parseArgs(argv: string[]): CliArgs {
       if (h) out.viewportHeight = h
     }
     else if (a.startsWith('--timeout=')) out.timeoutMs = Number(a.slice('--timeout='.length)) || out.timeoutMs
+    else if (a.startsWith('--github-repo=')) out.githubRepo = a.slice('--github-repo='.length)
+    else if (a.startsWith('--github-pr=')) {
+      const n = Number(a.slice('--github-pr='.length))
+      if (Number.isFinite(n)) out.githubPr = n
+    }
+    else if (a.startsWith('--github-token=')) out.githubToken = a.slice('--github-token='.length)
     else if (a.startsWith('-')) {
       console.warn(`unwrap-cli: unknown flag ${a}`)
     }
@@ -253,6 +338,9 @@ Options:
   --dwell=MS          Pause after each navigation to let async XHRs settle (default 1500)
   --viewport=WxH      Browser viewport (default 1280x800)
   --timeout=MS        Per-URL page load timeout (default 30000)
+  --github-repo=O/R   Post a diff comment to this PR (env: GITHUB_REPOSITORY)
+  --github-pr=N       PR number to comment on (env: UNWRAP_PR_NUMBER)
+  --github-token=TOK  GitHub PAT or GITHUB_TOKEN with pull-requests:write (env: GITHUB_TOKEN)
   -h, --help          This help
 
 Examples:
