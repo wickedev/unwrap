@@ -29,6 +29,16 @@ export function ProjectPage({
         ${kpi('Static assets', digest.staticAssets.length, 'var(--muted)')}
       </div>
 
+      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; border-color: var(--accent);">
+        <div style="min-width: 0;">
+          <strong style="font-size: 13px;">📋 AI service brief</strong>
+          <div class="meta" style="font-size: 11px; margin-top: 2px;">
+            Gemini reads the captured screenshots, routes, API surface, GraphQL ops, and user actions, then writes a structured analysis: what this service is, the user journeys observed, tech stack hints with evidence, and a reverse-engineering checklist. Cached per project, regenerates on new uploads.
+          </div>
+        </div>
+        <a class="btn" href="/projects/${encodeURIComponent(digest.host)}/narrative">→ Open service brief</a>
+      </div>
+
       ${digest.endpoints.some((e) => !e.graphql)
         ? html`<div class="card" style="margin-bottom: 16px;">
             <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">

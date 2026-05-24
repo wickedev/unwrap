@@ -43,6 +43,8 @@ import { ProjectPage } from './pages/project'
 import { buildCloneBundle } from './clone-bundle'
 import { buildOpenApiFromProject, buildOpenApiFromSession } from './openapi-export'
 import { buildPostmanFromProject, buildPostmanFromSession } from './postman-export'
+import { loadOrGenerateNarrative } from './project-narrative'
+import { ProjectNarrativePage } from './pages/project-narrative'
 import { verifySession } from './verify'
 import { diffSessions, summarizeRegression } from './sessiondiff'
 import { computeCrossSessionVisualDiff } from './visualcrossdiff'
@@ -591,6 +593,55 @@ app.get('/projects/:host/api/mock', async (c) => {
       'cache-control': 'private, no-store',
     },
   })
+})
+
+app.get('/projects/:host/narrative', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const sessions = await loadProjectSessions(c.env, email, host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const digest = aggregateProject(host, sessions)
+  try {
+    // Cache-only read: don't pay for Gemini on a GET. Empty result renders
+    // the "generate" CTA so the user opts in explicitly.
+    const cached = c.env.SESSIONS
+      ? ((await c.env.SESSIONS.get(`narrative:${email}:${host}`, 'json').catch(() => null)) as
+          | Awaited<ReturnType<typeof loadOrGenerateNarrative>>
+          | null)
+      : null
+    const narrative =
+      cached &&
+      cached.sessionCount === digest.sessionCount &&
+      cached.latestUploadedAt === digest.lastCapturedAt
+        ? cached
+        : undefined
+    return c.html(ProjectNarrativePage({ email, host, ...(narrative ? { narrative } : {}) }))
+  } catch (e) {
+    return c.html(ProjectNarrativePage({ email, host, error: String(e) }))
+  }
+})
+
+app.post('/projects/:host/narrative/regenerate', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const sessions = await loadProjectSessions(c.env, email, host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const digest = aggregateProject(host, sessions)
+  const latestSession = [...sessions].sort((a, b) => b.uploadedAt - a.uploadedAt)[0]!
+  try {
+    const narrative = await loadOrGenerateNarrative({
+      env: c.env,
+      email,
+      digest,
+      latestSession,
+      forceRegenerate: true,
+    })
+    return c.html(ProjectNarrativePage({ email, host, narrative }))
+  } catch (e) {
+    return c.html(ProjectNarrativePage({ email, host, error: String(e) }))
+  }
 })
 
 app.get('/projects/:host/openapi.json', async (c) => {
