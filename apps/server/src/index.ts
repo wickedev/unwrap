@@ -74,6 +74,11 @@ import { buildSessionPrComment } from './pr-comment'
 import { setSentryConfig, getSentryConfig, deleteSentryConfig } from './storage/sentry-config'
 import { correlateSentryIssuesWithSessions, fetchRecentSentryIssues } from './sentry'
 import { ProjectSentryPage } from './pages/project-sentry'
+import { setLinearConfig, getLinearConfig, deleteLinearConfig } from './storage/linear-config'
+import { createLinearIssue } from './linear'
+import { setSlackConfig, getSlackConfig, deleteSlackConfig } from './storage/slack-config'
+import { postSlackMessage } from './slack'
+import { ProjectIntegrationsPage } from './pages/project-integrations'
 import {
   forgetInstallation,
   getInstallation,
@@ -264,8 +269,57 @@ app.post('/api/sessions', async (c) => {
 
   await putSession(c.env, record)
   const url = `${originOf(c.req.url)}/sessions/${id}`
+
+  // Slack notify (fire-and-forget — never block the upload on it).
+  void notifySlackForUpload(c.env, email, record, url).catch((e) => {
+    console.warn('[unwrap-server] slack notify failed', e)
+  })
+
   return c.json<UploadSessionResponse>({ id, url })
 })
+
+// Posts to the configured Slack webhook for the project if the user has
+// notifyOnRegression on and this upload triggered a regression, or
+// notifyOnFirstCapture on and this is the first capture for the host.
+async function notifySlackForUpload(
+  env: Env,
+  email: string,
+  record: StoredSession,
+  sessionUrl: string,
+): Promise<void> {
+  const host = record.summary.meta.host
+  const cfg = await getSlackConfig(env, email, host)
+  if (!cfg) return
+  const reg = record.regression
+  const isRegression = reg && reg.level !== 'pass'
+  if (!cfg.notifyOnFirstCapture && !isRegression) return
+  // We treat "no baseline + notifyOnFirstCapture" as the first-capture
+  // signal — the regression code returns no record when there's no
+  // baseline.
+  const isFirstCapture = !reg && cfg.notifyOnFirstCapture
+  if (!isFirstCapture && !isRegression) return
+
+  const title = isRegression
+    ? `${reg.level === 'fail' ? '🚨' : '⚠️'} Regression detected on ${host}`
+    : `📸 New Unwrap capture for ${host}`
+  const text = isRegression
+    ? reg.headline
+    : `${record.summary.navigations.length} nav${record.summary.navigations.length === 1 ? '' : 's'}, ${record.summary.apiCalls?.length ?? 0} API call${record.summary.apiCalls?.length === 1 ? '' : 's'} captured.`
+  const fields = isRegression
+    ? [
+        ...(reg.networkOnlyInCurrent > 0 ? [{ name: 'New endpoints', value: String(reg.networkOnlyInCurrent) }] : []),
+        ...(reg.networkOnlyInBaseline > 0 ? [{ name: 'Missing endpoints', value: String(reg.networkOnlyInBaseline) }] : []),
+        ...(reg.networkStatusChanges > 0 ? [{ name: 'Status changes', value: String(reg.networkStatusChanges) }] : []),
+        ...(reg.consoleErrorDelta !== 0 ? [{ name: 'Console error delta', value: (reg.consoleErrorDelta > 0 ? '+' : '') + String(reg.consoleErrorDelta) }] : []),
+      ]
+    : []
+  await postSlackMessage(cfg, {
+    title,
+    text,
+    ...(fields.length > 0 ? { fields } : {}),
+    link: { text: 'Open session in Unwrap', url: sessionUrl },
+  })
+}
 
 function base64ToBytes(s: string): ArrayBuffer {
   const bin = atob(s)
@@ -1045,6 +1099,108 @@ app.get('/share/:token/tests.zip', async (c) => {
   })
 })
 
+// ---------- Per-project integrations (Linear / Slack / Sentry shortcut) ----
+
+app.get('/projects/:host/integrations', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const [linear, slack, sentry] = await Promise.all([
+    getLinearConfig(c.env, email, host),
+    getSlackConfig(c.env, email, host),
+    getSentryConfig(c.env, email, host),
+  ])
+  return c.html(ProjectIntegrationsPage({ email, host, linear, slack, sentry }))
+})
+
+app.post('/projects/:host/integrations/linear', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const form = (await c.req.parseBody().catch(() => ({}))) as Record<string, string | File | undefined>
+  const get = (k: string) => (typeof form[k] === 'string' ? (form[k] as string).trim() : '')
+  const apiKey = get('apiKey')
+  const teamId = get('teamId')
+  const teamKey = get('teamKey')
+  if (!apiKey || !teamId) return c.redirect(`/projects/${encodeURIComponent(host)}/integrations`, 302)
+  await setLinearConfig(c.env, email, host, { apiKey, teamId, ...(teamKey ? { teamKey } : {}) })
+  return c.redirect(`/projects/${encodeURIComponent(host)}/integrations`, 302)
+})
+
+app.post('/projects/:host/integrations/linear/disconnect', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  await deleteLinearConfig(c.env, email, host)
+  return c.redirect(`/projects/${encodeURIComponent(host)}/integrations`, 302)
+})
+
+// Create a Linear issue from a finding. The caller (typically the
+// security / a11y / performance page rendered with a button) POSTs the
+// finding's title + description; we attach a link back to the report.
+app.post('/projects/:host/integrations/linear/issue', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.json(err('Not authenticated'), 401)
+  const host = decodeURIComponent(c.req.param('host'))
+  const cfg = await getLinearConfig(c.env, email, host)
+  if (!cfg) return c.json(err('Linear not connected for this project'), 400)
+  const body = (await c.req.json().catch(() => ({}))) as { title?: string; description?: string; sourcePath?: string }
+  if (!body.title) return c.json(err('title required'), 400)
+  const sourceLink = body.sourcePath
+    ? `\n\n---\n[View finding in Unwrap](${originOf(c.req.url)}${body.sourcePath})`
+    : ''
+  try {
+    const issue = await createLinearIssue(cfg, {
+      title: body.title,
+      description: (body.description ?? '') + sourceLink,
+    })
+    return c.json(issue)
+  } catch (e) {
+    return c.json(err('Linear create-issue failed', String(e)), 500)
+  }
+})
+
+app.post('/projects/:host/integrations/slack', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const form = (await c.req.parseBody().catch(() => ({}))) as Record<string, string | File | undefined>
+  const webhookUrl = typeof form['webhookUrl'] === 'string' ? (form['webhookUrl'] as string).trim() : ''
+  if (!webhookUrl) return c.redirect(`/projects/${encodeURIComponent(host)}/integrations`, 302)
+  await setSlackConfig(c.env, email, host, {
+    webhookUrl,
+    notifyOnRegression: form['notifyOnRegression'] === 'on',
+    notifyOnFirstCapture: form['notifyOnFirstCapture'] === 'on',
+  })
+  return c.redirect(`/projects/${encodeURIComponent(host)}/integrations`, 302)
+})
+
+app.post('/projects/:host/integrations/slack/disconnect', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  await deleteSlackConfig(c.env, email, host)
+  return c.redirect(`/projects/${encodeURIComponent(host)}/integrations`, 302)
+})
+
+app.post('/projects/:host/integrations/slack/test', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const cfg = await getSlackConfig(c.env, email, host)
+  if (!cfg) return c.redirect(`/projects/${encodeURIComponent(host)}/integrations`, 302)
+  try {
+    await postSlackMessage(cfg, {
+      title: `✅ Unwrap test message — ${host}`,
+      text: 'If you see this in your channel, the webhook is wired up.',
+      link: { text: `Open ${host} project`, url: `${originOf(c.req.url)}/projects/${encodeURIComponent(host)}` },
+    })
+    return c.redirect(`/projects/${encodeURIComponent(host)}/integrations?msg=Test+message+sent`, 302)
+  } catch (e) {
+    return c.redirect(`/projects/${encodeURIComponent(host)}/integrations?err=${encodeURIComponent(String(e))}`, 302)
+  }
+})
+
 app.get('/projects/:host/sentry', async (c) => {
   const email = await readEmail(c)
   if (!email) return c.redirect('/', 302)
@@ -1189,7 +1345,8 @@ app.get('/projects/:host/security', async (c) => {
   const sessions = await loadProjectSessions(c.env, email, host)
   if (sessions.length === 0) return c.html(LoginPage(), 404)
   const report = analyzeProjectSecurity(host, sessions)
-  return c.html(ProjectSecurityPage({ email, report }))
+  const linearConnected = !!(await getLinearConfig(c.env, email, host))
+  return c.html(ProjectSecurityPage({ email, report, linearConnected }))
 })
 
 app.get('/projects/:host/websockets', async (c) => {

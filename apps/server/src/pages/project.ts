@@ -88,6 +88,7 @@ export function ProjectPage({
         restEndpoints.length > 0 ? miniDownload(link('/postman.json'), '↓ Postman collection', 'v2.1 — folders by tag, sample responses') : null,
         digest.graphqlOps.length > 0 ? miniDownload(link('/graphql.txt'), '↓ GraphQL operations', `${digest.graphqlOps.length} ops merged across sessions`) : null,
         !isShareView ? miniCard(link('/sentry'), '🐞 Sentry correlation', 'Match Sentry issues to the user flow that produced them') : null,
+        !isShareView ? miniCard(link('/integrations'), '🔌 Linear / Slack', 'File issues from findings, ping Slack on regression') : null,
       ])}
 
       <!-- SHARE section (owner only) -->

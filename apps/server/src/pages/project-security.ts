@@ -17,9 +17,11 @@ const SEV_GLYPH: Record<SecurityFinding['severity'], string> = {
 export function ProjectSecurityPage({
   email,
   report,
+  linearConnected = false,
 }: {
   email: string
   report: SecurityReport
+  linearConnected?: boolean
 }): Renderable {
   return Layout({
     title: `${report.host} · security`,
@@ -48,7 +50,7 @@ export function ProjectSecurityPage({
         : html`
           <div class="section">
             <h2>Findings (${report.findings.length})</h2>
-            ${report.findings.map((f) => renderFinding(f))}
+            ${report.findings.map((f) => renderFinding(f, report.host, linearConnected))}
           </div>
         `}
 
@@ -76,15 +78,61 @@ export function ProjectSecurityPage({
         : ''}
 
       <style>${raw(SEC_CSS)}</style>
+      ${linearConnected ? html`<script>${raw(LINEAR_BTN_JS)}</script>` : ''}
     `,
   })
 }
 
-function renderFinding(f: SecurityFinding): Renderable {
+const LINEAR_BTN_JS = `
+async function createLinearIssue(btn, bodyJson, hostEnc) {
+  const original = btn.textContent
+  btn.disabled = true
+  btn.textContent = 'Creating…'
+  try {
+    const body = JSON.parse(bodyJson)
+    const resp = await fetch('/projects/' + hostEnc + '/integrations/linear/issue', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!resp.ok) {
+      const t = await resp.text()
+      throw new Error('HTTP ' + resp.status + ': ' + t.slice(0, 120))
+    }
+    const issue = await resp.json()
+    btn.textContent = '✓ ' + issue.identifier
+    const link = document.createElement('a')
+    link.href = issue.url
+    link.target = '_blank'
+    link.rel = 'noopener'
+    link.style.marginLeft = '6px'
+    link.style.fontSize = '11px'
+    link.textContent = 'open ↗'
+    btn.parentNode.insertBefore(link, btn.nextSibling)
+  } catch (e) {
+    btn.textContent = 'Failed — see console'
+    console.error('createLinearIssue failed', e)
+    btn.disabled = false
+    setTimeout(() => { btn.textContent = original }, 2400)
+  }
+}
+`
+
+function renderFinding(f: SecurityFinding, host: string, linearConnected: boolean): Renderable {
+  // Encode the title/description as JSON-string body that the inline
+  // onclick handler hands to fetch — keeps everything stateless.
+  const body = JSON.stringify({
+    title: `[security] ${f.title}`,
+    description: `**Severity:** ${f.severity}\n\n${f.description}\n\n**Evidence:**\n${f.evidence.map((e) => '- `' + e + '`').join('\n')}`,
+    sourcePath: `/projects/${encodeURIComponent(host)}/security`,
+  }).replace(/'/g, "\\'")
   return html`<div class="finding sev-${f.severity}">
     <div class="finding-head">
       <span class="sev-pill" style="background-color: ${SEV_COLOR[f.severity]};">${SEV_GLYPH[f.severity]} ${f.severity}</span>
       <strong>${f.title}</strong>
+      ${linearConnected
+        ? html`<button class="btn secondary linear-btn" onclick="createLinearIssue(this, '${body}', '${encodeURIComponent(host)}')">📥 Linear issue</button>`
+        : ''}
     </div>
     <div class="finding-body">
       <p>${f.description}</p>
@@ -126,7 +174,8 @@ const SEC_CSS = `
 .finding { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
 .finding.sev-high { border-color: color-mix(in oklab, #d64545 35%, var(--border)); background: color-mix(in oklab, #d64545 4%, transparent); }
 .finding.sev-warn { border-color: color-mix(in oklab, #b88300 35%, var(--border)); background: color-mix(in oklab, #b88300 4%, transparent); }
-.finding-head { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.finding-head { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+.linear-btn { font-size: 10px; padding: 3px 8px; margin-left: auto; }
 .sev-pill { color: white; padding: 1px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
 .finding-body p { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
 .finding-body .evidence { list-style: none; padding: 0; margin: 0; }
