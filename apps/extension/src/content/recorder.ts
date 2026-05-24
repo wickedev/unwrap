@@ -84,6 +84,11 @@ export class ContentRecorder {
       button: e.button,
       modifiers: { alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey, shift: e.shiftKey },
       url: location.href,
+      position: {
+        x: Math.round(e.clientX),
+        y: Math.round(e.clientY),
+        viewport: { w: window.innerWidth, h: window.innerHeight },
+      },
     }
     this.send(event)
   }

@@ -90,6 +90,14 @@ export interface SerializedAction {
     piercedCss?: string[]
   }
   details: Record<string, unknown>
+  // Pointer coordinates in viewport pixels at action time, plus the
+  // viewport size, so the heatmap can render at any screenshot scale.
+  // Currently only populated for click events. Older sessions won't have it.
+  position?: {
+    x: number
+    y: number
+    viewport: { w: number; h: number }
+  }
 }
 
 export interface SerializedStorageState {

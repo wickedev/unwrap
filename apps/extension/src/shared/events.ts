@@ -212,6 +212,13 @@ export interface ClickEvent extends BaseEvent {
   button: number
   modifiers: { alt: boolean; ctrl: boolean; meta: boolean; shift: boolean }
   url: string
+  // clientX/clientY at click time plus the viewport size — used by the
+  // server-side click heatmap to position the dot on any screenshot.
+  position?: {
+    x: number
+    y: number
+    viewport: { w: number; h: number }
+  }
 }
 
 export interface InputEvent extends BaseEvent {

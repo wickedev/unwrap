@@ -141,6 +141,7 @@ function serializeAction(ev: ActionEvent): SerializedAction {
         visibleText: c.element.visibleText,
         button: c.button,
       },
+      ...(c.position ? { position: c.position } : {}),
     }
   }
   if (ev.type === 'input') {
