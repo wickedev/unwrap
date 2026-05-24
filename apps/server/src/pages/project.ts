@@ -99,6 +99,16 @@ export function ProjectPage({
 
       <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
         <div style="min-width: 0;">
+          <strong style="font-size: 13px;">📋 AI test plan</strong>
+          <div class="meta" style="font-size: 11px; margin-top: 2px;">
+            Gemini reads the surface + coverage + canonical suite and proposes prioritized scenarios with evidence and Playwright assertions. Skips what's already canonical. Pairs with the test coverage gap analysis.
+          </div>
+        </div>
+        <a class="btn" href="${link('/test-plan')}">→ Open test plan</a>
+      </div>
+
+      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+        <div style="min-width: 0;">
           <strong style="font-size: 13px;">🧪 Canonical test suite</strong>
           <div class="meta" style="font-size: 11px; margin-top: 2px;">
             Curate which sessions' generated specs become your project's golden tests. Bundle exports as a runnable Playwright project ready for CI.

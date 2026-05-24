@@ -67,6 +67,8 @@ import { analyzeProjectPerformance } from './project-performance'
 import { ProjectPerformancePage } from './pages/project-performance'
 import { analyzeTestCoverage } from './test-coverage'
 import { TestCoveragePage } from './pages/test-coverage'
+import { loadOrGenerateTestPlan, readCachedTestPlan } from './project-test-plan'
+import { TestPlanPage } from './pages/test-plan'
 import {
   addCanonicalTest,
   listCanonicalTests,
@@ -1000,6 +1002,46 @@ app.get('/share/:token/tests.zip', async (c) => {
       'cache-control': 'private, no-store',
     },
   })
+})
+
+app.get('/projects/:host/test-plan', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const sessions = await loadProjectSessions(c.env, email, host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const cached = await readCachedTestPlan(c.env, email, host)
+  if (cached) return c.html(TestPlanPage({ email, host, plan: cached }))
+  return c.html(TestPlanPage({ email, host }))
+})
+
+app.post('/projects/:host/test-plan/regenerate', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const sessions = await loadProjectSessions(c.env, email, host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const canonical = await listCanonicalTests(c.env, email, host)
+  try {
+    const plan = await loadOrGenerateTestPlan({
+      env: c.env,
+      email,
+      host,
+      sessions,
+      canonicalCount: canonical.length,
+      forceRegenerate: true,
+    })
+    return c.html(TestPlanPage({ email, host, plan }))
+  } catch (e) {
+    return c.html(TestPlanPage({ email, host, error: String(e) }))
+  }
+})
+
+app.get('/share/:token/test-plan', async (c) => {
+  const r = await resolveShare(c.env, c.req.param('token'))
+  if (!r) return c.html(LoginPage(), 404)
+  const cached = await readCachedTestPlan(c.env, r.email, r.host)
+  return c.html(TestPlanPage({ email: '', host: r.host, ...(cached ? { plan: cached } : {}) }))
 })
 
 app.get('/projects/:host/test-coverage', async (c) => {
