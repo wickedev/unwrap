@@ -71,6 +71,9 @@ import { TestCoveragePage } from './pages/test-coverage'
 import { loadOrGenerateTestPlan, readCachedTestPlan } from './project-test-plan'
 import { TestPlanPage } from './pages/test-plan'
 import { buildSessionPrComment } from './pr-comment'
+import { setSentryConfig, getSentryConfig, deleteSentryConfig } from './storage/sentry-config'
+import { correlateSentryIssuesWithSessions, fetchRecentSentryIssues } from './sentry'
+import { ProjectSentryPage } from './pages/project-sentry'
 import {
   forgetInstallation,
   getInstallation,
@@ -1040,6 +1043,46 @@ app.get('/share/:token/tests.zip', async (c) => {
       'cache-control': 'private, no-store',
     },
   })
+})
+
+app.get('/projects/:host/sentry', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const sessions = await loadProjectSessions(c.env, email, host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const config = await getSentryConfig(c.env, email, host)
+  if (!config) return c.html(ProjectSentryPage({ email, host, config: null, correlations: [] }))
+  try {
+    const issues = await fetchRecentSentryIssues(config, 50)
+    const correlations = correlateSentryIssuesWithSessions(issues, sessions)
+    return c.html(ProjectSentryPage({ email, host, config, correlations }))
+  } catch (e) {
+    return c.html(ProjectSentryPage({ email, host, config, correlations: [], error: String(e) }))
+  }
+})
+
+app.post('/projects/:host/sentry/config', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const form = (await c.req.parseBody().catch(() => ({}))) as Record<string, string | File | undefined>
+  const get = (k: string) => (typeof form[k] === 'string' ? (form[k] as string).trim() : '')
+  const org = get('org')
+  const project = get('project')
+  const apiToken = get('apiToken')
+  const baseUrl = get('baseUrl')
+  if (!org || !project || !apiToken) return c.redirect(`/projects/${encodeURIComponent(host)}/sentry`, 302)
+  await setSentryConfig(c.env, email, host, { org, project, apiToken, ...(baseUrl ? { baseUrl } : {}) })
+  return c.redirect(`/projects/${encodeURIComponent(host)}/sentry`, 302)
+})
+
+app.post('/projects/:host/sentry/disconnect', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  await deleteSentryConfig(c.env, email, host)
+  return c.redirect(`/projects/${encodeURIComponent(host)}/sentry`, 302)
 })
 
 app.get('/projects/:host/test-plan', async (c) => {

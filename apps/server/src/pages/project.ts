@@ -97,6 +97,18 @@ export function ProjectPage({
           </div>`
         : ''}
 
+      ${!isShareView
+        ? html`<div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+            <div style="min-width: 0;">
+              <strong style="font-size: 13px;">🐞 Sentry correlation</strong>
+              <div class="meta" style="font-size: 11px; margin-top: 2px;">
+                Cross-references recent Sentry issues against captured console errors. Surfaces "which user flow produced this error?" — the question Sentry alone can't answer.
+              </div>
+            </div>
+            <a class="btn secondary" href="${link('/sentry')}">→ Open Sentry view</a>
+          </div>`
+        : ''}
+
       <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
         <div style="min-width: 0;">
           <strong style="font-size: 13px;">📋 AI test plan</strong>
