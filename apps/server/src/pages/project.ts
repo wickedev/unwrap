@@ -8,19 +8,42 @@ export function ProjectPage({
   email,
   digest,
   otherHosts = [],
+  share,
+  shareUrl,
 }: {
   email: string
   digest: ProjectDigest
   otherHosts?: string[]
+  // When set, page renders in read-only "share viewer" mode. Internal
+  // links route through /share/:token instead of /projects/:host so the
+  // anonymous viewer can navigate the sub-pages.
+  share?: { token: string }
+  // For the OWNER view only — the currently-active share URL, if any,
+  // so the page can render the "shared" controls.
+  shareUrl?: { url: string; createdAt: number } | null
 }): Renderable {
   const restEndpoints = digest.endpoints.filter((e) => !e.graphql)
   const graphqlEndpoints = digest.endpoints.filter((e) => e.graphql)
+  const isShareView = !!share
+  // Resolve internal navigation paths against the right prefix so the
+  // share viewer's links stay inside the share envelope.
+  const link = (subPath: string) =>
+    isShareView
+      ? `/share/${share!.token}${subPath}`
+      : `/projects/${encodeURIComponent(digest.host)}${subPath}`
 
   return Layout({
     title: `Project · ${digest.host}`,
     email,
     body: html`
-      <p><a href="/">← back to sessions</a></p>
+      ${isShareView
+        ? html`<div class="card" style="background: color-mix(in oklab, #7c4ac2 6%, transparent); border-color: color-mix(in oklab, #7c4ac2 35%, var(--border)); margin-bottom: 12px;">
+            <strong style="font-size: 13px;">🔗 Shared read-only view</strong>
+            <div class="meta" style="font-size: 11px; margin-top: 2px;">
+              You're viewing an aggregated capture of <code>${digest.host}</code> via a read-only share link. Sign in for full access if you have an Unwrap account.
+            </div>
+          </div>`
+        : html`<p><a href="/">← back to sessions</a></p>`}
       <h2 style="margin-top: 4px;">${digest.host}</h2>
       <p class="muted">Aggregated across every captured session for this host. Type inference, GraphQL widening, and route maps merge samples from all sessions for a fuller picture than any single capture.</p>
 
@@ -32,13 +55,13 @@ export function ProjectPage({
         ${kpi('Static assets', digest.staticAssets.length, 'var(--muted)')}
       </div>
 
-      ${otherHosts.length > 0
+      ${!isShareView && otherHosts.length > 0
         ? html`<div class="card" style="margin-bottom: 16px;">
             <div style="display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; margin-bottom: 4px;">
               <strong style="font-size: 13px;">⇄ Compare with another project</strong>
               <span class="meta" style="font-size: 11px;">Diff endpoints / routes / GraphQL ops / response schemas against another host.</span>
             </div>
-            <form method="get" action="/projects/${encodeURIComponent(digest.host)}/diff/__placeholder__" onsubmit="event.preventDefault(); const t = this.querySelector('select').value; if (t) window.location.href = '/projects/${encodeURIComponent(digest.host)}/diff/' + encodeURIComponent(t)" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px;">
+            <form method="get" action="${link('/diff/__placeholder__')}" onsubmit="event.preventDefault(); const t = this.querySelector('select').value; if (t) window.location.href = '${link('/diff/')}' + encodeURIComponent(t)" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px;">
               <label class="meta" style="font-size: 12px;">vs.</label>
               <select required style="padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit;">
                 <option value="">— pick a project —</option>
@@ -49,6 +72,31 @@ export function ProjectPage({
           </div>`
         : ''}
 
+      ${!isShareView
+        ? html`<div class="card" style="margin-bottom: 16px;">
+            <div style="display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; margin-bottom: 4px;">
+              <strong style="font-size: 13px;">🔗 Share this project (read-only)</strong>
+              <span class="meta" style="font-size: 11px;">Anyone with the link sees the same project view, no Unwrap account required. Revoke any time.</span>
+            </div>
+            ${shareUrl
+              ? html`<div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px;">
+                  <input type="text" readonly value="${shareUrl.url}" id="share-url-input"
+                    style="flex: 1; min-width: 240px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; font-family: ui-monospace, monospace; font-size: 12px;"
+                    onclick="this.select()" />
+                  <button type="button" class="btn secondary" onclick="navigator.clipboard.writeText(document.getElementById('share-url-input').value); this.textContent='Copied'; setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+                  <form method="post" action="${link('/share/revoke')}" style="margin: 0;" onsubmit="return confirm('Revoke this share link? The URL will stop working immediately.')">
+                    <button type="submit" class="btn danger">Revoke</button>
+                  </form>
+                </div>
+                ${shareUrl.createdAt > 0
+                  ? html`<div class="meta" style="font-size: 11px; margin-top: 4px;">Created ${new Date(shareUrl.createdAt).toISOString().slice(0, 16).replace('T', ' ')}.</div>`
+                  : ''}`
+              : html`<form method="post" action="${link('/share')}" style="margin-top: 8px;">
+                  <button type="submit" class="btn secondary">Create share link</button>
+                </form>`}
+          </div>`
+        : ''}
+
       <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
         <div style="min-width: 0;">
           <strong style="font-size: 13px;">🔒 Security overview</strong>
@@ -56,7 +104,7 @@ export function ProjectPage({
             Heuristic findings from captured network + storage data: auth scheme per endpoint, secrets in URLs, mixed content, cross-origin requests, cookie/localStorage inventory, login-redirect surface.
           </div>
         </div>
-        <a class="btn secondary" href="/projects/${encodeURIComponent(digest.host)}/security">→ Open security report</a>
+        <a class="btn secondary" href="${link('/security')}">→ Open security report</a>
       </div>
 
       <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
@@ -66,7 +114,7 @@ export function ProjectPage({
             Realtime traffic captured alongside the REST/GraphQL surface — channels grouped by endpoint, frames bucketed into message types using the JSON discriminator field. The protocol that the API inventory misses.
           </div>
         </div>
-        <a class="btn secondary" href="/projects/${encodeURIComponent(digest.host)}/websockets">→ Open WS inventory</a>
+        <a class="btn secondary" href="${link('/websockets')}">→ Open WS inventory</a>
       </div>
 
       <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
@@ -76,7 +124,7 @@ export function ProjectPage({
             Per-file used vs. total bytes from V8 PreciseCoverage + CSS rule usage, aggregated across every captured session. Reveals which chunks of the bundle are dead weight at the URLs the user actually visited.
           </div>
         </div>
-        <a class="btn secondary" href="/projects/${encodeURIComponent(digest.host)}/coverage">→ Open coverage</a>
+        <a class="btn secondary" href="${link('/coverage')}">→ Open coverage</a>
       </div>
 
       <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
@@ -86,7 +134,7 @@ export function ProjectPage({
             Per-page heatmap of click positions, overlaid on a captured screenshot. Requires the new extension build with position capture — reload + record a fresh session if you don't see data.
           </div>
         </div>
-        <a class="btn secondary" href="/projects/${encodeURIComponent(digest.host)}/heatmap">→ Open heatmap</a>
+        <a class="btn secondary" href="${link('/heatmap')}">→ Open heatmap</a>
       </div>
 
       <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
@@ -96,7 +144,7 @@ export function ProjectPage({
             Bipartite visualization: pages on the left, endpoints + GraphQL ops on the right, edges weighted by call count across every captured session. Reveals which endpoints are page-specific vs. cross-cutting.
           </div>
         </div>
-        <a class="btn secondary" href="/projects/${encodeURIComponent(digest.host)}/graph">→ Open graph</a>
+        <a class="btn secondary" href="${link('/graph')}">→ Open graph</a>
       </div>
 
       <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; border-color: var(--accent);">
@@ -106,7 +154,7 @@ export function ProjectPage({
             Gemini reads the captured screenshots, routes, API surface, GraphQL ops, and user actions, then writes a structured analysis: what this service is, the user journeys observed, tech stack hints with evidence, and a reverse-engineering checklist. Cached per project, regenerates on new uploads.
           </div>
         </div>
-        <a class="btn" href="/projects/${encodeURIComponent(digest.host)}/narrative">→ Open service brief</a>
+        <a class="btn" href="${link('/narrative')}">→ Open service brief</a>
       </div>
 
       ${digest.endpoints.some((e) => !e.graphql)
@@ -119,8 +167,8 @@ export function ProjectPage({
               OpenAPI 3.0 spec inferred from the union of every captured call across this project. Schemas use enums for small string sets, mark optional fields, and include captured request/response examples. Generate a TypeScript SDK with one line: <code>npx openapi-typescript ${escapeAttr(`openapi-${safeHost(digest.host)}.json`)} -o client.ts</code>.
             </div>
             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-              <a class="btn secondary" href="/projects/${encodeURIComponent(digest.host)}/openapi.json" download>↓ OpenAPI 3.0 (.json)</a>
-              <a class="btn secondary" href="/projects/${encodeURIComponent(digest.host)}/postman.json" download>↓ Postman collection (.json)</a>
+              <a class="btn secondary" href="${link('/openapi.json')}" download>↓ OpenAPI 3.0 (.json)</a>
+              <a class="btn secondary" href="${link('/postman.json')}" download>↓ Postman collection (.json)</a>
             </div>
           </div>`
         : ''}
@@ -132,7 +180,7 @@ export function ProjectPage({
             One zip with the latest captured frontend, an aggregated mock for every API ever called, and <code>run.sh</code> that starts both. Unzip → <code>./run.sh</code> → open <code>http://localhost:8080</code>. The complete reverse-engineering deliverable.
           </div>
         </div>
-        <a class="btn" href="/projects/${encodeURIComponent(digest.host)}/clone.zip" download>↓ Download clone.zip</a>
+        <a class="btn" href="${link('/clone.zip')}" download>↓ Download clone.zip</a>
       </div>
 
       ${digest.graphqlOps.length > 0
@@ -143,7 +191,7 @@ export function ProjectPage({
                 ${digest.graphqlOps.length} unique operation${digest.graphqlOps.length === 1 ? '' : 's'} merged across every session. Variable types widened over the union of every captured <code>variables</code> payload.
               </div>
             </div>
-            <a class="btn" href="/projects/${encodeURIComponent(digest.host)}/graphql.txt" download>↓ Download operations.graphql</a>
+            <a class="btn" href="${link('/graphql.txt')}" download>↓ Download operations.graphql</a>
           </div>`
         : ''}
 
@@ -155,7 +203,7 @@ export function ProjectPage({
                 Single-file Node.js script with every endpoint ever captured across this project. <strong>Stateful replay</strong>: each route walks through the sequence of responses observed during recording, so flows like login → fetch → mutate → refetch reproduce correctly. ${digest.endpoints.reduce((n, e) => n + e.callCount, 0)} total calls fed in.
               </div>
             </div>
-            <a class="btn" href="/projects/${encodeURIComponent(digest.host)}/api/mock" download>↓ Download mock server</a>
+            <a class="btn" href="${link('/api/mock')}" download>↓ Download mock server</a>
           </div>`
         : ''}
 
@@ -165,7 +213,9 @@ export function ProjectPage({
           ${digest.sessions
             .slice()
             .sort((a, b) => b.uploadedAt - a.uploadedAt)
-            .map((s) => html`<a class="badge" style="text-decoration: none;" href="/sessions/${s.id}" title="${s.startedAt}">${s.id.slice(0, 8)} · ${formatAgo(s.uploadedAt)}</a>`)}
+            .map((s) => isShareView
+              ? html`<span class="badge" title="${s.startedAt}">${s.id.slice(0, 8)} · ${formatAgo(s.uploadedAt)}</span>`
+              : html`<a class="badge" style="text-decoration: none;" href="/sessions/${s.id}" title="${s.startedAt}">${s.id.slice(0, 8)} · ${formatAgo(s.uploadedAt)}</a>`)}
         </div>
       </div>
 

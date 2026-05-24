@@ -59,6 +59,12 @@ import { searchSessions } from './search'
 import { SearchPage } from './pages/search'
 import { analyzeProjectSecurity } from './project-security'
 import { ProjectSecurityPage } from './pages/project-security'
+import {
+  getOrCreateShareToken,
+  readShareToken,
+  resolveShareToken,
+  revokeShareToken,
+} from './storage/share'
 import { verifySession } from './verify'
 import { diffSessions, summarizeRegression } from './sessiondiff'
 import { computeCrossSessionVisualDiff } from './visualcrossdiff'
@@ -512,11 +518,235 @@ app.get('/projects/:host', async (c) => {
   const sessions = await loadProjectSessions(c.env, email, host)
   if (sessions.length === 0) return c.html(LoginPage(), 404)
   const digest = aggregateProject(host, sessions)
-  // List the other hosts the user has captured so the picker on the project
-  // page can offer comparisons. Cheap KV metadata list, no full reads.
   const items = await listSessions(c.env, email)
   const otherHosts = [...new Set(items.map((s) => s.host).filter((h) => h && h !== host))].sort()
-  return c.html(ProjectPage({ email, digest, otherHosts }))
+  const existingToken = await readShareToken(c.env, email, host)
+  const shareUrl = existingToken
+    ? { url: `${originOf(c.req.url)}/share/${existingToken}`, createdAt: 0 }
+    : null
+  return c.html(ProjectPage({ email, digest, otherHosts, shareUrl }))
+})
+
+// ---------- Share links ----------
+
+app.post('/projects/:host/share', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  await getOrCreateShareToken(c.env, email, host)
+  return c.redirect(`/projects/${encodeURIComponent(host)}`, 302)
+})
+
+app.post('/projects/:host/share/revoke', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  await revokeShareToken(c.env, email, host)
+  return c.redirect(`/projects/${encodeURIComponent(host)}`, 302)
+})
+
+// Anonymous resolver — used by every /share/:token/* route. Returns the
+// resolved (email, host) pair so the routes can reuse loadProjectSessions
+// against the OWNER's email even though the caller isn't signed in.
+async function resolveShare(env: Env, token: string): Promise<{ email: string; host: string } | null> {
+  const rec = await resolveShareToken(env, token)
+  if (!rec) return null
+  return { email: rec.email, host: rec.host }
+}
+
+app.get('/share/:token', async (c) => {
+  const r = await resolveShare(c.env, c.req.param('token'))
+  if (!r) return c.html(LoginPage(), 404)
+  const sessions = await loadProjectSessions(c.env, r.email, r.host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const digest = aggregateProject(r.host, sessions)
+  return c.html(
+    ProjectPage({
+      email: '',
+      digest,
+      share: { token: c.req.param('token') },
+    }),
+  )
+})
+
+app.get('/share/:token/graph', async (c) => {
+  const r = await resolveShare(c.env, c.req.param('token'))
+  if (!r) return c.html(LoginPage(), 404)
+  const sessions = await loadProjectSessions(c.env, r.email, r.host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const graph = buildProjectGraph(sessions)
+  return c.html(ProjectGraphPage({ email: '', host: r.host, graph }))
+})
+
+app.get('/share/:token/coverage', async (c) => {
+  const r = await resolveShare(c.env, c.req.param('token'))
+  if (!r) return c.html(LoginPage(), 404)
+  const sessions = await loadProjectSessions(c.env, r.email, r.host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const coverage = aggregateCoverage(sessions)
+  return c.html(ProjectCoveragePage({ email: '', host: r.host, coverage }))
+})
+
+app.get('/share/:token/heatmap', async (c) => {
+  const r = await resolveShare(c.env, c.req.param('token'))
+  if (!r) return c.html(LoginPage(), 404)
+  const sessions = await loadProjectSessions(c.env, r.email, r.host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const pages = buildProjectHeatmaps(sessions)
+  return c.html(ProjectHeatmapPage({ email: '', host: r.host, pages }))
+})
+
+app.get('/share/:token/websockets', async (c) => {
+  const r = await resolveShare(c.env, c.req.param('token'))
+  if (!r) return c.html(LoginPage(), 404)
+  const sessions = await loadProjectSessions(c.env, r.email, r.host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const channels = aggregateWsChannels(sessions)
+  return c.html(ProjectWebSocketsPage({ email: '', host: r.host, channels }))
+})
+
+app.get('/share/:token/security', async (c) => {
+  const r = await resolveShare(c.env, c.req.param('token'))
+  if (!r) return c.html(LoginPage(), 404)
+  const sessions = await loadProjectSessions(c.env, r.email, r.host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const report = analyzeProjectSecurity(r.host, sessions)
+  return c.html(ProjectSecurityPage({ email: '', report }))
+})
+
+app.get('/share/:token/narrative', async (c) => {
+  const r = await resolveShare(c.env, c.req.param('token'))
+  if (!r) return c.html(LoginPage(), 404)
+  const sessions = await loadProjectSessions(c.env, r.email, r.host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const digest = aggregateProject(r.host, sessions)
+  const cached = c.env.SESSIONS
+    ? ((await c.env.SESSIONS.get(`narrative:${r.email}:${r.host}`, 'json').catch(() => null)) as
+        | Awaited<ReturnType<typeof loadOrGenerateNarrative>>
+        | null)
+    : null
+  const narrative =
+    cached &&
+    cached.sessionCount === digest.sessionCount &&
+    cached.latestUploadedAt === digest.lastCapturedAt
+      ? cached
+      : undefined
+  return c.html(ProjectNarrativePage({ email: '', host: r.host, ...(narrative ? { narrative } : {}) }))
+})
+
+app.get('/share/:token/openapi.json', async (c) => {
+  const r = await resolveShare(c.env, c.req.param('token'))
+  if (!r) return c.json(err('Not found'), 404)
+  const sessions = await loadProjectSessions(c.env, r.email, r.host)
+  if (sessions.length === 0) return c.json(err('Not found'), 404)
+  const digest = aggregateProject(r.host, sessions)
+  const { filename, body } = buildOpenApiFromProject(digest)
+  return new Response(body, {
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'content-disposition': `attachment; filename="${filename}"`,
+      'cache-control': 'private, no-store',
+    },
+  })
+})
+
+app.get('/share/:token/postman.json', async (c) => {
+  const r = await resolveShare(c.env, c.req.param('token'))
+  if (!r) return c.json(err('Not found'), 404)
+  const sessions = await loadProjectSessions(c.env, r.email, r.host)
+  if (sessions.length === 0) return c.json(err('Not found'), 404)
+  const digest = aggregateProject(r.host, sessions)
+  const { filename, body } = buildPostmanFromProject(digest)
+  return new Response(body, {
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'content-disposition': `attachment; filename="${filename}"`,
+      'cache-control': 'private, no-store',
+    },
+  })
+})
+
+app.get('/share/:token/graphql.txt', async (c) => {
+  const r = await resolveShare(c.env, c.req.param('token'))
+  if (!r) return c.json(err('Not found'), 404)
+  const sessions = await loadProjectSessions(c.env, r.email, r.host)
+  if (sessions.length === 0) return c.json(err('Not found'), 404)
+  const allCalls = sessions.flatMap((s) => s.summary.apiCalls ?? [])
+  const synthetic: StoredSession = {
+    ...sessions[0]!,
+    id: `project-${r.host}`,
+    summary: {
+      ...sessions[0]!.summary,
+      apiCalls: allCalls,
+      meta: { ...sessions[0]!.summary.meta, host: r.host },
+    },
+  }
+  const artifact = extractGraphqlOperations(synthetic)
+  if (!artifact) return c.json(err('No GraphQL traffic'), 404)
+  return new Response(artifact.body, {
+    headers: {
+      'content-type': 'text/plain; charset=utf-8',
+      'content-disposition': `attachment; filename="${artifact.filename}"`,
+      'cache-control': 'private, no-store',
+    },
+  })
+})
+
+app.get('/share/:token/api/mock', async (c) => {
+  const r = await resolveShare(c.env, c.req.param('token'))
+  if (!r) return c.json(err('Not found'), 404)
+  const sessions = await loadProjectSessions(c.env, r.email, r.host)
+  if (sessions.length === 0) return c.json(err('Not found'), 404)
+  const allCalls = sessions.flatMap((s) => s.summary.apiCalls ?? [])
+  const synthetic: StoredSession = {
+    ...sessions[0]!,
+    id: `project-${r.host}`,
+    summary: {
+      ...sessions[0]!.summary,
+      apiCalls: allCalls,
+      meta: { ...sessions[0]!.summary.meta, host: r.host },
+    },
+  }
+  const { filename, body } = generateMockServer(synthetic)
+  return new Response(body, {
+    headers: {
+      'content-type': 'application/javascript; charset=utf-8',
+      'content-disposition': `attachment; filename="${filename}"`,
+      'cache-control': 'private, no-store',
+    },
+  })
+})
+
+app.get('/share/:token/clone.zip', async (c) => {
+  const r = await resolveShare(c.env, c.req.param('token'))
+  if (!r) return c.json(err('Not found'), 404)
+  const sessions = await loadProjectSessions(c.env, r.email, r.host)
+  if (sessions.length === 0) return c.json(err('Not found'), 404)
+  const mostRecent = [...sessions].sort((a, b) => b.uploadedAt - a.uploadedAt)[0]!
+  const allCalls = sessions.flatMap((s) => s.summary.apiCalls ?? [])
+  const synthetic: StoredSession = {
+    ...sessions[0]!,
+    id: `project-${r.host}`,
+    summary: {
+      ...sessions[0]!.summary,
+      apiCalls: allCalls,
+      meta: { ...sessions[0]!.summary.meta, host: r.host },
+    },
+  }
+  const safeHost = r.host.replace(/[^a-zA-Z0-9.-]/g, '-').slice(0, 60)
+  const { filename, bytes } = buildCloneBundle({
+    staticSource: mostRecent,
+    mockSource: synthetic,
+    label: `Local clone of ${r.host}`,
+    filenameStem: `clone-${safeHost}`,
+  })
+  return new Response(bytes, {
+    headers: {
+      'content-type': 'application/zip',
+      'content-disposition': `attachment; filename="${filename}"`,
+      'cache-control': 'private, no-store',
+    },
+  })
 })
 
 app.get('/projects/:host/graphql.txt', async (c) => {
