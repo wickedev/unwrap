@@ -65,6 +65,8 @@ import { aggregateA11y } from './project-a11y'
 import { ProjectA11yPage } from './pages/project-a11y'
 import { analyzeProjectPerformance } from './project-performance'
 import { ProjectPerformancePage } from './pages/project-performance'
+import { analyzeTestCoverage } from './test-coverage'
+import { TestCoveragePage } from './pages/test-coverage'
 import {
   getOrCreateShareToken,
   readShareToken,
@@ -903,6 +905,25 @@ app.get('/projects/:host/api/mock', async (c) => {
       'cache-control': 'private, no-store',
     },
   })
+})
+
+app.get('/projects/:host/test-coverage', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const sessions = await loadProjectSessions(c.env, email, host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const coverage = analyzeTestCoverage(sessions)
+  return c.html(TestCoveragePage({ email, host, coverage }))
+})
+
+app.get('/share/:token/test-coverage', async (c) => {
+  const r = await resolveShare(c.env, c.req.param('token'))
+  if (!r) return c.html(LoginPage(), 404)
+  const sessions = await loadProjectSessions(c.env, r.email, r.host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const coverage = analyzeTestCoverage(sessions)
+  return c.html(TestCoveragePage({ email: '', host: r.host, coverage }))
 })
 
 app.get('/projects/:host/performance', async (c) => {

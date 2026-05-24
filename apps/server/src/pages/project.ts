@@ -99,6 +99,16 @@ export function ProjectPage({
 
       <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
         <div style="min-width: 0;">
+          <strong style="font-size: 13px;">✅ Test coverage map</strong>
+          <div class="meta" style="font-size: 11px; margin-top: 2px;">
+            Cross-references every generated Playwright spec against the project's known routes and endpoints — surfaces untested surface area prioritized by traffic. The "what tests are we missing?" page.
+          </div>
+        </div>
+        <a class="btn secondary" href="${link('/test-coverage')}">→ Open test coverage</a>
+      </div>
+
+      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+        <div style="min-width: 0;">
           <strong style="font-size: 13px;">⚡ Performance</strong>
           <div class="meta" style="font-size: 11px; margin-top: 2px;">
             Per-endpoint p50/p90/p95/max latency rolled up across every session. Slowest individual calls + N+1 pattern detection (≥4 hits to the same endpoint within 1s). Latency = request → response body complete, via captured CDP timestamps.
