@@ -98,6 +98,10 @@ export function SessionDetailPage({
                 : ''}
               <h3 style="margin-top:14px; font-size:13px;">Spec</h3>
               <pre id="spec-pre">${generated.spec}</pre>
+              <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                <a class="btn secondary" href="/sessions/${session.id}/repair">🩹 Suggest repair</a>
+                <span class="meta" style="font-size: 11px;">Gemini reads the current spec + latest captured HTML and proposes selector fixes when the UI has drifted.</span>
+              </div>
               <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);">
                 ${isCanonical
                   ? html`<div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">

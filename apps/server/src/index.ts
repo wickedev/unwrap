@@ -87,6 +87,8 @@ import {
 import { normalizeTestRunIngest } from './test-result-ingest'
 import { analyzeTestStability } from './test-run-analysis'
 import { TestRunsPage } from './pages/test-runs'
+import { repairSpec } from './spec-repair'
+import { SpecRepairPage } from './pages/spec-repair'
 import {
   forgetInstallation,
   getInstallation,
@@ -1114,6 +1116,51 @@ app.get('/share/:token/tests.zip', async (c) => {
 // CI POSTs Playwright JSON reporter output (or a flat specs array) here
 // — authenticated with the standard Unwrap API token. We normalize,
 // store, and surface stability rollups on the project's test-runs page.
+// ---------- Spec auto-repair ----------
+
+app.get('/sessions/:id/repair', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const id = c.req.param('id')
+  const record = await getStoredSession(c.env, email, id)
+  if (!record) return c.html(LoginPage(), 404)
+  const spec = record.generated?.spec
+  if (!spec) {
+    return c.html(
+      SpecRepairPage({ email, sessionId: id, originalSpec: '', error: 'This session has no generated spec — generate one from the session detail page first.' }),
+    )
+  }
+  return c.html(SpecRepairPage({ email, sessionId: id, originalSpec: spec }))
+})
+
+app.post('/sessions/:id/repair', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const id = c.req.param('id')
+  const record = await getStoredSession(c.env, email, id)
+  if (!record) return c.html(LoginPage(), 404)
+  const spec = record.generated?.spec
+  if (!spec) {
+    return c.html(
+      SpecRepairPage({ email, sessionId: id, originalSpec: '', error: 'This session has no generated spec.' }),
+    )
+  }
+  const form = (await c.req.parseBody().catch(() => ({}))) as Record<string, string | File | undefined>
+  const errorMessage = typeof form['errorMessage'] === 'string' ? (form['errorMessage'] as string) : ''
+  const sessions = await loadProjectSessions(c.env, email, record.summary.meta.host)
+  try {
+    const result = await repairSpec({
+      env: c.env,
+      originalSpec: spec,
+      errorMessage,
+      sessions,
+    })
+    return c.html(SpecRepairPage({ email, sessionId: id, originalSpec: spec, result }))
+  } catch (e) {
+    return c.html(SpecRepairPage({ email, sessionId: id, originalSpec: spec, error: String(e) }))
+  }
+})
+
 app.post('/api/test-results', async (c) => {
   const email = await readEmail(c)
   if (!email) return c.json(err('Not authenticated'), 401)
