@@ -55,6 +55,8 @@ import { aggregateCoverage } from './project-coverage'
 import { ProjectCoveragePage } from './pages/project-coverage'
 import { aggregateWsChannels } from './project-websockets'
 import { ProjectWebSocketsPage } from './pages/project-websockets'
+import { searchSessions } from './search'
+import { SearchPage } from './pages/search'
 import { verifySession } from './verify'
 import { diffSessions, summarizeRegression } from './sessiondiff'
 import { computeCrossSessionVisualDiff } from './visualcrossdiff'
@@ -432,6 +434,25 @@ app.get('/sessions', async (c) => {
   await backfillRegressions(c.env, email)
   const sessions = await listSessions(c.env, email)
   return c.html(SessionsPage({ email, sessions }))
+})
+
+app.get('/search', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const query = (c.req.query('q') ?? '').trim()
+  if (query === '') {
+    return c.html(SearchPage({ email, query: '', results: [] }))
+  }
+  const items = await listSessions(c.env, email)
+  // Load full session records — we need their summaries to scan content.
+  // Cap to the 200 most recent to keep page time bounded if a user has
+  // accumulated many; older captures still surface via project pages.
+  const recent = items.slice(0, 200)
+  const sessions = (await Promise.all(
+    recent.map((s) => getStoredSession(c.env, email, s.id)),
+  )).filter((r): r is StoredSession => r !== null)
+  const results = searchSessions(query, sessions)
+  return c.html(SearchPage({ email, query, results }))
 })
 
 app.get('/sessions/:id', async (c) => {

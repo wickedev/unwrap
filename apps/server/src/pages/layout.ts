@@ -25,7 +25,10 @@ const STYLES = `
 html, body { margin: 0; background: var(--bg); color: var(--fg); }
 body { font-size: 14px; line-height: 1.5; }
 .wrap { max-width: 960px; margin: 0 auto; padding: 24px; }
-header.app-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding: 12px 24px; }
+header.app-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); padding: 12px 24px; }
+header.app-header .header-search { flex: 1; max-width: 480px; }
+header.app-header .header-search input { width: 100%; padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; font-size: 13px; }
+header.app-header .header-search input:focus { outline: 1px solid var(--accent); }
 header.app-header h1 { margin: 0; font-size: 16px; font-weight: 600; }
 header.app-header h1 a { color: inherit; text-decoration: none; }
 header.app-header .user { color: var(--muted); font-size: 12px; }
@@ -76,6 +79,11 @@ export function Layout({ title, email, body, scripts }: LayoutProps): Renderable
   <body>
     <header class="app-header">
       <h1><a href="/">Unwrap</a></h1>
+      ${email
+        ? html`<form method="get" action="/search" class="header-search">
+            <input type="search" name="q" placeholder="Search captures…" />
+          </form>`
+        : ''}
       <div class="user">
         ${email
           ? html`${email} <a href="/auth/sign-out">Sign out</a>`
