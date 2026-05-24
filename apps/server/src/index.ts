@@ -38,6 +38,8 @@ import { ApiInventoryPage } from './pages/api-inventory'
 import { generateMockServer } from './mock-export'
 import { buildStaticMirrorZip } from './static-mirror'
 import { extractGraphqlOperations } from './graphql-extract'
+import { aggregateProject } from './project-aggregate'
+import { ProjectPage } from './pages/project'
 import { verifySession } from './verify'
 import { diffSessions, summarizeRegression } from './sessiondiff'
 import { computeCrossSessionVisualDiff } from './visualcrossdiff'
@@ -445,6 +447,84 @@ app.get('/sessions/:id/api/mock', async (c) => {
   const record = await getStoredSession(c.env, email, c.req.param('id'))
   if (!record) return c.json(err('Not found'), 404)
   const { filename, body } = generateMockServer(record)
+  return new Response(body, {
+    headers: {
+      'content-type': 'application/javascript; charset=utf-8',
+      'content-disposition': `attachment; filename="${filename}"`,
+      'cache-control': 'private, no-store',
+    },
+  })
+})
+
+// Loads every session record for `email` belonging to `host`. Used by the
+// project pages and aggregated download endpoints. Walks the list metadata
+// once to pick ids by host, then fetches the full records in parallel.
+async function loadProjectSessions(env: Env, email: string, host: string): Promise<StoredSession[]> {
+  const items = await listSessions(env, email)
+  const ids = items.filter((s) => s.host === host).map((s) => s.id)
+  if (ids.length === 0) return []
+  const records = await Promise.all(ids.map((id) => getStoredSession(env, email, id)))
+  return records.filter((r): r is StoredSession => r !== null)
+}
+
+app.get('/projects/:host', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const sessions = await loadProjectSessions(c.env, email, host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const digest = aggregateProject(host, sessions)
+  return c.html(ProjectPage({ email, digest }))
+})
+
+app.get('/projects/:host/graphql.txt', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const sessions = await loadProjectSessions(c.env, email, host)
+  if (sessions.length === 0) return c.json(err('Not found'), 404)
+  const digest = aggregateProject(host, sessions)
+  if (digest.graphqlOps.length === 0) return c.json(err('No GraphQL traffic in this project'), 404)
+  // Synthesize a session whose apiCalls union the full project — feeds the
+  // same extractor we use for single sessions so the output format matches.
+  const allCalls = sessions.flatMap((s) => s.summary.apiCalls ?? [])
+  const synthetic: StoredSession = {
+    ...sessions[0]!,
+    id: `project-${host}`,
+    summary: {
+      ...sessions[0]!.summary,
+      apiCalls: allCalls,
+      meta: { ...sessions[0]!.summary.meta, host },
+    },
+  }
+  const artifact = extractGraphqlOperations(synthetic)
+  if (!artifact) return c.json(err('No GraphQL traffic in this project'), 404)
+  return new Response(artifact.body, {
+    headers: {
+      'content-type': 'text/plain; charset=utf-8',
+      'content-disposition': `attachment; filename="${artifact.filename}"`,
+      'cache-control': 'private, no-store',
+    },
+  })
+})
+
+app.get('/projects/:host/api/mock', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const sessions = await loadProjectSessions(c.env, email, host)
+  if (sessions.length === 0) return c.json(err('Not found'), 404)
+  const allCalls = sessions.flatMap((s) => s.summary.apiCalls ?? [])
+  const synthetic: StoredSession = {
+    ...sessions[0]!,
+    id: `project-${host}`,
+    summary: {
+      ...sessions[0]!.summary,
+      apiCalls: allCalls,
+      meta: { ...sessions[0]!.summary.meta, host },
+    },
+  }
+  const { filename, body } = generateMockServer(synthetic)
   return new Response(body, {
     headers: {
       'content-type': 'application/javascript; charset=utf-8',

@@ -1,6 +1,7 @@
 import { html } from 'hono/html'
 import type { SessionListItem } from '@unwrap/protocol'
 import { Layout, type Renderable } from './layout'
+import { groupSessionsByHost } from '../project-aggregate'
 
 export function LoginPage(): Renderable {
   return Layout({
@@ -16,10 +17,23 @@ export function LoginPage(): Renderable {
 }
 
 export function SessionsPage({ email, sessions }: { email: string; sessions: SessionListItem[] }): Renderable {
+  const projects = groupSessionsByHost(sessions.map((s) => ({ host: s.host, uploadedAt: s.uploadedAt })))
   return Layout({
     title: 'Sessions',
     email,
     body: html`
+      ${projects.length > 0
+        ? html`<div class="section" style="margin-top: 0;">
+            <h2>Projects</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-bottom: 24px;">
+              ${projects.map((p) => html`<a href="/projects/${encodeURIComponent(p.host)}" class="card" style="display: block; margin: 0; text-decoration: none; color: inherit;">
+                <h3 style="margin: 0 0 4px 0;">${p.host || '(no host)'}</h3>
+                <div class="meta">${p.sessionCount} session${p.sessionCount === 1 ? '' : 's'} · last ${relativeTime(p.latestUploadedAt)}</div>
+              </a>`)}
+            </div>
+          </div>`
+        : ''}
+
       <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 16px;">
         <h2 style="margin:0;">Uploaded sessions</h2>
         <span class="muted">${sessions.length} session${sessions.length === 1 ? '' : 's'}</span>
