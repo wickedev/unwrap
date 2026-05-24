@@ -21,4 +21,8 @@ export interface Env {
   GITHUB_APP_PRIVATE_KEY?: string   // PEM, RSA
   GITHUB_APP_WEBHOOK_SECRET?: string
   GITHUB_APP_SLUG?: string           // for nice URLs in UI; e.g. "unwrap"
+  // Used by the scheduled handler when constructing Slack links — the
+  // cron event has no request context, so we read the public origin
+  // from configuration instead of req.url.
+  MONITOR_PUBLIC_ORIGIN?: string
 }

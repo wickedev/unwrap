@@ -6,13 +6,15 @@ import { Badge } from '../components/ui/badge'
 import type { LinearConfig } from '../storage/linear-config'
 import type { SlackConfig } from '../storage/slack-config'
 import type { SentryConfig } from '../storage/sentry-config'
+import type { ProjectRepoBinding } from '../storage/project-repo'
 
-export function ProjectIntegrationsPage({ email, host, linear, slack, sentry, message, error }: {
+export function ProjectIntegrationsPage({ email, host, linear, slack, sentry, repo, message, error }: {
   email: string
   host: string
   linear: LinearConfig | null
   slack: SlackConfig | null
   sentry: SentryConfig | null
+  repo: ProjectRepoBinding | null
   message?: string
   error?: string
 }) {
@@ -85,6 +87,35 @@ export function ProjectIntegrationsPage({ email, host, linear, slack, sentry, me
                   <label className="text-xs flex gap-1.5 items-center"><input type="checkbox" name="notifyOnRegression" defaultChecked /> Notify on regression detected</label>
                   <label className="text-xs flex gap-1.5 items-center"><input type="checkbox" name="notifyOnFirstCapture" /> Notify on each new capture (first or otherwise)</label>
                   <Button type="submit" className="justify-self-start">Connect Slack</Button>
+                </form>
+              </>
+            )}
+        </CardContent></Card>
+      </section>
+
+      <section className="mb-6">
+        <h2 className="text-sm font-semibold m-0 mb-3">🐙 GitHub PR bot</h2>
+        <Card><CardContent className="p-4">
+          {repo
+            ? (
+              <>
+                <div className="flex justify-between items-baseline gap-2 flex-wrap">
+                  <div><strong>Bound</strong> · <code>{repo.repo}</code></div>
+                  <form method="post" action={`/projects/${encodeURIComponent(host)}/integrations/repo/unbind`} data-confirm="Unbind this repository?">
+                    <Button type="submit" variant="destructive" size="sm">Unbind</Button>
+                  </form>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">When a PR opens or pushes in this repo, the Unwrap App scans the PR body + bot comments for a deploy-preview URL (Vercel / Netlify / Render / CF Pages), runs a synthetic check against it, and posts a drift summary as an idempotent PR comment.</p>
+                <p className="text-xs text-muted-foreground mt-1">Comment <code className="rounded bg-muted px-1 py-0.5">/unwrap recheck</code> on the PR to force a re-run (useful when the preview URL only shows up after the first push).</p>
+              </>
+            )
+            : (
+              <>
+                <p className="m-0 font-semibold">Auto-comment PR drift summaries.</p>
+                <p className="text-xs text-muted-foreground mt-1.5 mb-3">Install the Unwrap GitHub App on the org if you haven't (Integrations settings), then bind this project to one repo. Multiple projects can target the same repo (e.g. staging + prod hosts on one frontend).</p>
+                <form method="post" action={`/projects/${encodeURIComponent(host)}/integrations/repo`} className="grid gap-2 max-w-xl grid-cols-[1fr_auto]">
+                  <Input type="text" name="repo" required placeholder="owner/repo (e.g. wickedev/unwrap)" pattern="^[^/\s]+/[^/\s]+$" />
+                  <Button type="submit">Bind</Button>
                 </form>
               </>
             )}

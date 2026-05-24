@@ -86,6 +86,7 @@ export function ProjectPage({
         <MiniCard href={link('/test-coverage')} title="✅ Test coverage map" sub="Untested routes/endpoints prioritized by traffic" />
         <MiniCard href={link('/tests')} title="🧪 Canonical test suite" sub="Curate canonical specs; CI-ready Playwright project" />
         <MiniCard href={link('/test-runs')} title="📈 Test runs" sub="Pass/fail history from CI · flaky + failing detection" />
+        {!isShareView && <MiniCard href={link('/monitor')} title="🔭 Synthetic monitoring" sub="Cron-driven live check; alerts on drift vs baseline" />}
       </Section>
 
       <Section title="📦 Export & integrate" subtitle="Take Unwrap data into your existing tooling.">

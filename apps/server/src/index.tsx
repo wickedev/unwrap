@@ -114,6 +114,21 @@ import {
 import { verifySession } from './verify'
 import { diffSessions, summarizeRegression } from './sessiondiff'
 import { computeCrossSessionVisualDiff } from './visualcrossdiff'
+import {
+  deleteMonitorConfig,
+  getMonitorConfig,
+  listMonitorRuns,
+  setMonitorConfig,
+  type MonitorInterval,
+} from './storage/monitor'
+import { runDueMonitors, runSingleMonitor } from './monitor'
+import { ProjectMonitorPage } from './pages/project-monitor'
+import { handlePullRequestEvent, type PrEvent } from './pr-bot'
+import {
+  bindProjectRepo,
+  getProjectRepoBinding,
+  unbindProjectRepo,
+} from './storage/project-repo'
 
 type Bindings = Env
 type Variables = { email: string }
@@ -1184,16 +1199,82 @@ app.get('/projects/:host/test-runs', async (c) => {
   })} />, { title: "Test runs" })
 })
 
+// ---------- Synthetic monitoring ----------
+
+app.get('/projects/:host/monitor', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const sessions = await loadProjectSessions(c.env, email, host)
+  if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
+  const [config, runs, slack] = await Promise.all([
+    getMonitorConfig(c.env, email, host),
+    listMonitorRuns(c.env, email, host),
+    getSlackConfig(c.env, email, host),
+  ])
+  const defaultEntryUrl = [...sessions].sort((a, b) => b.uploadedAt - a.uploadedAt)[0]!.summary.meta.url
+  return ssr(
+    <ProjectMonitorPage email={email} host={host} config={config} runs={runs} slackConfigured={!!slack} defaultEntryUrl={defaultEntryUrl} />,
+    { title: `${host} · monitor` },
+  )
+})
+
+app.post('/projects/:host/monitor/config', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const form = (await c.req.parseBody().catch(() => ({}))) as Record<string, string | File | undefined>
+  const enabled = form['enabled'] === 'on'
+  const intervalRaw = typeof form['interval'] === 'string' ? form['interval'] : '1h'
+  const interval: MonitorInterval = (['15m', '1h', '6h', '24h'] as const).includes(intervalRaw as MonitorInterval)
+    ? (intervalRaw as MonitorInterval)
+    : '1h'
+  const entryUrlRaw = typeof form['entryUrl'] === 'string' ? form['entryUrl'].trim() : ''
+  const alertSlack = form['alertSlack'] === 'on'
+  if (!enabled && !await getMonitorConfig(c.env, email, host)) {
+    // Disabling something that never existed — no-op.
+    return c.redirect(`/projects/${encodeURIComponent(host)}/monitor`, 302)
+  }
+  if (!enabled) {
+    await deleteMonitorConfig(c.env, email, host)
+    return c.redirect(`/projects/${encodeURIComponent(host)}/monitor`, 302)
+  }
+  await setMonitorConfig(c.env, email, host, {
+    enabled: true,
+    interval,
+    alertSlack,
+    ...(entryUrlRaw ? { entryUrl: entryUrlRaw } : {}),
+  })
+  return c.redirect(`/projects/${encodeURIComponent(host)}/monitor`, 302)
+})
+
+app.post('/projects/:host/monitor/run', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const cfg = await getMonitorConfig(c.env, email, host)
+  if (!cfg) return c.redirect(`/projects/${encodeURIComponent(host)}/monitor`, 302)
+  // Fire-and-forget; runs synchronously and can take ~15s, so don't block
+  // the redirect on it. Errors swallowed — they show up as 'error' runs.
+  c.executionCtx.waitUntil(
+    runSingleMonitor(c.env, email, host, cfg, originOf(c.req.url)).catch((e) => {
+      console.warn('[unwrap-monitor] manual run failed', e)
+    }),
+  )
+  return c.redirect(`/projects/${encodeURIComponent(host)}/monitor?msg=Run+queued`, 302)
+})
+
 app.get('/projects/:host/integrations', async (c) => {
   const email = await readEmail(c)
   if (!email) return c.redirect('/', 302)
   const host = decodeURIComponent(c.req.param('host'))
-  const [linear, slack, sentry] = await Promise.all([
+  const [linear, slack, sentry, repo] = await Promise.all([
     getLinearConfig(c.env, email, host),
     getSlackConfig(c.env, email, host),
     getSentryConfig(c.env, email, host),
+    getProjectRepoBinding(c.env, email, host),
   ])
-  return ssr(<ProjectIntegrationsPage {...({ email, host, linear, slack, sentry })} />, { title: "Project integrations" })
+  return ssr(<ProjectIntegrationsPage {...({ email, host, linear, slack, sentry, repo })} />, { title: "Project integrations" })
 })
 
 app.post('/projects/:host/integrations/linear', async (c) => {
@@ -1263,6 +1344,27 @@ app.post('/projects/:host/integrations/slack/disconnect', async (c) => {
   if (!email) return c.redirect('/', 302)
   const host = decodeURIComponent(c.req.param('host'))
   await deleteSlackConfig(c.env, email, host)
+  return c.redirect(`/projects/${encodeURIComponent(host)}/integrations`, 302)
+})
+
+app.post('/projects/:host/integrations/repo', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const form = (await c.req.parseBody().catch(() => ({}))) as Record<string, string | File | undefined>
+  const repoRaw = typeof form['repo'] === 'string' ? form['repo'].trim() : ''
+  if (!/^[^/\s]+\/[^/\s]+$/.test(repoRaw)) {
+    return c.redirect(`/projects/${encodeURIComponent(host)}/integrations?err=${encodeURIComponent('Repo must be owner/repo')}`, 302)
+  }
+  await bindProjectRepo(c.env, email, host, repoRaw)
+  return c.redirect(`/projects/${encodeURIComponent(host)}/integrations`, 302)
+})
+
+app.post('/projects/:host/integrations/repo/unbind', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  await unbindProjectRepo(c.env, email, host)
   return c.redirect(`/projects/${encodeURIComponent(host)}/integrations`, 302)
 })
 
@@ -1594,6 +1696,35 @@ app.post('/webhooks/github', async (c) => {
     await handleInstallationEvent(c.env, payload)
   } else if (event === 'installation_repositories') {
     await handleInstallationRepositoriesEvent(c.env, payload)
+  } else if (event === 'pull_request') {
+    const pr = payload as unknown as PrEvent
+    if (['opened', 'reopened', 'synchronize', 'edited'].includes(pr.action)) {
+      const origin = originOf(c.req.url)
+      c.executionCtx.waitUntil(
+        handlePullRequestEvent(c.env, origin, pr).catch((e) => console.warn('[unwrap-pr] handle failed', e)),
+      )
+    }
+  } else if (event === 'issue_comment') {
+    // Support an `/unwrap recheck` comment trigger — manual re-run when
+    // the deploy preview URL only shows up after the first push.
+    const ic = payload as unknown as {
+      action: 'created' | string
+      comment?: { body?: string }
+      issue?: { number: number; pull_request?: unknown; body?: string | null }
+      repository?: { full_name: string }
+    }
+    if (ic.action === 'created' && ic.issue?.pull_request && /^\s*\/unwrap\b/i.test(ic.comment?.body ?? '') && ic.repository) {
+      const origin = originOf(c.req.url)
+      const synth: PrEvent = {
+        action: 'synchronize',
+        number: ic.issue.number,
+        pull_request: { number: ic.issue.number, html_url: '', head: { sha: '', ref: '' }, base: { ref: '' }, title: '', body: ic.issue.body ?? '' },
+        repository: { full_name: ic.repository.full_name },
+      }
+      c.executionCtx.waitUntil(
+        handlePullRequestEvent(c.env, origin, synth).catch((e) => console.warn('[unwrap-pr] recheck failed', e)),
+      )
+    }
   }
   return c.body(null, 204)
 })
@@ -1828,4 +1959,19 @@ function htmlError(message: string): string {
 // satisfy ts: imports used only in types above
 void (verifyToken as unknown)
 
-export default app
+export default {
+  fetch: app.fetch,
+  // Cron handler — invoked on every wrangler [triggers] tick. Walks the
+  // global monitor enrolment, runs whichever monitors are due, alerts
+  // Slack on regression. Failures per project are swallowed so one bad
+  // run doesn't take down the whole tick.
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    const origin = env.MONITOR_PUBLIC_ORIGIN || 'https://unwrap-server.orange881217.workers.dev'
+    ctx.waitUntil(
+      runDueMonitors(env, origin).then(
+        (r) => console.info('[unwrap-monitor] cron tick', { cron: controller.cron, ...r }),
+        (e) => console.warn('[unwrap-monitor] cron tick failed', e),
+      ),
+    )
+  },
+} satisfies ExportedHandler<Env>

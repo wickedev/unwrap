@@ -23,6 +23,13 @@ id = "b705fd7215b2446ba50f8af60af8128f"
 [browser]
 binding = "BROWSER"
 
+# Cron triggers for synthetic monitoring. Fires every 15 minutes — each
+# monitor decides per-tick whether it's due (so a 24h interval only
+# actually runs every 24h). Note: Cloudflare crons only fire on the
+# *deployed* Worker, never against `wrangler dev`.
+[triggers]
+crons = ["*/15 * * * *"]
+
 # Production secrets — set via:
 #   wrangler secret put GOOGLE_CLIENT_ID
 #   wrangler secret put GOOGLE_CLIENT_SECRET
@@ -40,3 +47,6 @@ EXTENSION_REDIRECT_URL = ""
 # Gemini model. gemini-2.5-flash works on the free tier (vision-capable);
 # gemini-2.5-pro is highest quality but currently requires billing to be enabled on the GCP project.
 GEMINI_MODEL = "gemini-2.5-flash"
+# Public origin used by the scheduled cron handler when constructing
+# links in Slack alerts (cron events have no incoming request).
+MONITOR_PUBLIC_ORIGIN = "https://unwrap-server.orange881217.workers.dev"
