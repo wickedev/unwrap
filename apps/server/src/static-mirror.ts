@@ -1,5 +1,5 @@
 import { zipSync, strToU8 } from 'fflate'
-import type { StaticAsset, StoredSession } from '@unwrap/protocol'
+import type { ApiCall, StaticAsset, StoredSession } from '@unwrap/protocol'
 
 // Packs every captured text asset into a zip preserving the URL's
 // pathname under <host>/. Binary assets (image/font) the extension
@@ -53,7 +53,13 @@ export function buildStaticMirrorZip(session: StoredSession): { filename: string
     mime: asset.mimeType,
     size: asset.size,
   }))
-  files['MIRROR.md'] = strToU8(renderReadme(session, inlined, urlOnly, rewriteCounts))
+
+  const pages = buildPageMap(session, urlToPath)
+  const hasSitemap = pages.length > 0
+  if (hasSitemap) {
+    files['sitemap.html'] = strToU8(renderSitemap(session, pages))
+  }
+  files['MIRROR.md'] = strToU8(renderReadme(session, inlined, urlOnly, rewriteCounts, hasSitemap))
 
   const bytes = zipSync(files, { level: 6 })
   const filename = `mirror-${safeHost(session.summary.meta.host)}-${session.id.slice(0, 8)}.zip`
@@ -237,6 +243,7 @@ function renderReadme(
   inlined: { url: string; path: string; mime: string; size: number }[],
   urlOnly: { url: string; mime: string; size: number; status: number }[],
   rewriteCounts: { html: number; css: number; touched: number },
+  hasSitemap: boolean,
 ): string {
   const meta = session.summary.meta
   const lines: string[] = []
@@ -250,6 +257,9 @@ function renderReadme(
   lines.push(`- **${inlined.length}** text asset${inlined.length === 1 ? '' : 's'} (HTML / CSS / JS / SVG) inlined as files.`)
   lines.push(`- **${urlOnly.length}** binary reference${urlOnly.length === 1 ? '' : 's'} (image / font) listed below but not bundled — see the URLs to refetch from origin.`)
   lines.push(`- URLs in **${rewriteCounts.html}** HTML and **${rewriteCounts.css}** CSS file${rewriteCounts.html + rewriteCounts.css === 1 ? '' : 's'} scanned; **${rewriteCounts.touched}** had absolute URLs rewritten to relative paths so the mirror works offline.`)
+  if (hasSitemap) {
+    lines.push(`- **sitemap.html** at the root of the zip — every page navigated to during the capture, with the API calls each page fired and links to its local HTML when bundled. Open this first.`)
+  }
   lines.push('')
   lines.push('## How to use')
   lines.push('')
@@ -257,6 +267,10 @@ function renderReadme(
   lines.push('unzip mirror-*.zip -d mirror && cd mirror')
   lines.push(`python -m http.server 8080            # serve over http://localhost:8080`)
   lines.push('```')
+  if (hasSitemap) {
+    lines.push('')
+    lines.push('Then open <http://localhost:8080/sitemap.html> for the page index.')
+  }
   lines.push('')
   lines.push('Absolute and same-origin URLs that point at bundled assets have been rewritten')
   lines.push('to relative paths, so HTML/CSS load their JS/CSS/SVG dependencies from the zip.')
@@ -299,4 +313,228 @@ function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
   return `${(n / (1024 * 1024)).toFixed(2)} MB`
+}
+
+// ---- Sitemap ----------------------------------------------------------------
+
+interface PageEntry {
+  url: string
+  host: string
+  path: string
+  source: string
+  ts: number
+  // Local mirror file we have for this page, if any.
+  localPath?: string
+  // API calls fired between this navigation and the next.
+  apiCalls: { method: string; url: string; normalizedPath: string; status: number; mimeType: string }[]
+}
+
+// Pairs every committed-or-history navigation in the session with the API
+// calls fired between it and the next navigation, plus a link to the local
+// HTML file in the zip when we captured one. The result is a flat,
+// chronologically-ordered list — buildSitemap groups it for display.
+function buildPageMap(session: StoredSession, urlToPath: Map<string, string>): PageEntry[] {
+  const navs = session.summary.navigations ?? []
+  const calls = session.summary.apiCalls ?? []
+  if (navs.length === 0) return []
+
+  // Sort calls by ts so the bucketing per navigation window is deterministic.
+  const sortedCalls = calls.filter((c) => typeof c.ts === 'number').sort((a, b) => a.ts - b.ts)
+
+  // Sort navs by ts too, just in case.
+  const sortedNavs = [...navs].sort((a, b) => a.ts - b.ts)
+
+  const entries: PageEntry[] = []
+  for (let i = 0; i < sortedNavs.length; i++) {
+    const nav = sortedNavs[i]!
+    const nextNav = sortedNavs[i + 1]
+    const windowEnd = nextNav ? nextNav.ts : Number.POSITIVE_INFINITY
+    let host = ''
+    let pathname = '/'
+    try {
+      const u = new URL(nav.url)
+      host = u.host
+      pathname = u.pathname + u.search
+    } catch {
+      // leave as defaults
+    }
+    const local = urlToPath.get(nav.url) ?? urlToPath.get(stripQueryAndHash(nav.url))
+
+    const apiCalls: PageEntry['apiCalls'] = []
+    for (const c of sortedCalls) {
+      if (c.ts < nav.ts || c.ts >= windowEnd) continue
+      apiCalls.push(summarizeCall(c))
+    }
+
+    entries.push({
+      url: nav.url,
+      host,
+      path: pathname,
+      source: nav.source,
+      ts: nav.ts,
+      ...(local ? { localPath: local } : {}),
+      apiCalls,
+    })
+  }
+  return entries
+}
+
+function summarizeCall(c: ApiCall): PageEntry['apiCalls'][number] {
+  let normalizedPath = c.url
+  try {
+    const u = new URL(c.url)
+    normalizedPath = normalizePathForSitemap(u.pathname)
+  } catch {
+    // keep raw url
+  }
+  return {
+    method: c.method.toUpperCase(),
+    url: c.url,
+    normalizedPath,
+    status: c.status,
+    mimeType: c.responseMimeType,
+  }
+}
+
+// Same shape as api-inventory's normalizePath — kept local so this file
+// stays self-contained and the mirror can be generated without pulling
+// page rendering into the dependency graph.
+function normalizePathForSitemap(p: string): string {
+  return (
+    '/' +
+    p
+      .split('/')
+      .filter(Boolean)
+      .map((seg) => {
+        if (/^\d+$/.test(seg)) return '{id}'
+        if (/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(seg)) return '{uuid}'
+        if (/^[0-9a-f]{24,}$/i.test(seg)) return '{hash}'
+        return seg
+      })
+      .join('/')
+  )
+}
+
+function renderSitemap(session: StoredSession, pages: PageEntry[]): string {
+  const meta = session.summary.meta
+  // Group by URL so duplicate visits collapse into one row with a count.
+  const byUrl = new Map<string, PageEntry[]>()
+  for (const p of pages) {
+    const list = byUrl.get(p.url) ?? []
+    list.push(p)
+    byUrl.set(p.url, list)
+  }
+
+  // Stable sort: first visit ts asc.
+  const rows = [...byUrl.entries()]
+    .map(([url, visits]) => ({ url, visits }))
+    .sort((a, b) => a.visits[0]!.ts - b.visits[0]!.ts)
+
+  const items = rows
+    .map(({ url, visits }) => renderPageRow(url, visits))
+    .join('\n')
+
+  const totalCalls = pages.reduce((n, p) => n + p.apiCalls.length, 0)
+  const capturedHtml = pages.filter((p) => p.localPath).length
+
+  return `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Sitemap — ${escapeHtml(meta.host || 'session')}</title>
+<style>
+  body { font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 980px; margin: 0 auto; padding: 24px; color: #222; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #666; font-size: 12px; margin-bottom: 20px; }
+  .kpis { display: flex; gap: 16px; flex-wrap: wrap; margin: 12px 0 20px; }
+  .kpi { border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 12px; min-width: 120px; }
+  .kpi .v { font-size: 18px; font-weight: 600; }
+  .kpi .l { color: #6b7280; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
+  .page { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+  .page-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .url { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; word-break: break-all; }
+  .visits { color: #6b7280; font-size: 11px; }
+  .local { display: inline-block; padding: 1px 8px; background: #ecfdf5; color: #065f46; border-radius: 4px; font-size: 11px; text-decoration: none; }
+  .local:hover { background: #d1fae5; }
+  .no-local { display: inline-block; padding: 1px 8px; background: #f3f4f6; color: #6b7280; border-radius: 4px; font-size: 11px; }
+  details summary { cursor: pointer; color: #6b7280; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 8px; user-select: none; }
+  ul.calls { list-style: none; padding: 0; margin: 8px 0 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+  ul.calls li { padding: 2px 0; }
+  .method { display: inline-block; padding: 0 5px; border-radius: 3px; font-weight: 700; font-size: 10px; color: white; margin-right: 6px; min-width: 36px; text-align: center; }
+  .m-get { background: #2f6feb; }
+  .m-post { background: #1f9d55; }
+  .m-put, .m-patch { background: #b88300; }
+  .m-delete { background: #d64545; }
+  .m-other { background: #6b7280; }
+  .status { color: #6b7280; margin-left: 6px; }
+</style>
+</head><body>
+<h1>${escapeHtml(meta.host || 'Session')}</h1>
+<div class="sub">Captured ${escapeHtml(meta.startedAt)} · ${rows.length} unique page${rows.length === 1 ? '' : 's'} · ${pages.length} navigation${pages.length === 1 ? '' : 's'}</div>
+<div class="kpis">
+  <div class="kpi"><div class="v">${rows.length}</div><div class="l">Unique pages</div></div>
+  <div class="kpi"><div class="v">${capturedHtml}</div><div class="l">With local HTML</div></div>
+  <div class="kpi"><div class="v">${totalCalls}</div><div class="l">API calls fired</div></div>
+</div>
+${items}
+</body></html>
+`
+}
+
+function renderPageRow(url: string, visits: PageEntry[]): string {
+  const first = visits[0]!
+  const local = first.localPath
+  const callCounts = new Map<string, number>()
+  for (const v of visits) {
+    for (const c of v.apiCalls) {
+      const key = `${c.method} ${c.normalizedPath}`
+      callCounts.set(key, (callCounts.get(key) ?? 0) + 1)
+    }
+  }
+  // Dedupe but keep the original method/path for color and status sample.
+  const sample = new Map<string, PageEntry['apiCalls'][number]>()
+  for (const v of visits) for (const c of v.apiCalls) {
+    const key = `${c.method} ${c.normalizedPath}`
+    if (!sample.has(key)) sample.set(key, c)
+  }
+  const callItems = [...callCounts.entries()]
+    .sort(([, a], [, b]) => b - a)
+    .map(([key, count]) => {
+      const c = sample.get(key)!
+      const cls = methodClass(c.method)
+      return `<li><span class="method ${cls}">${escapeHtml(c.method)}</span><span>${escapeHtml(c.normalizedPath)}</span><span class="status">${c.status}${count > 1 ? ` · ×${count}` : ''}</span></li>`
+    })
+    .join('')
+
+  const totalCalls = [...callCounts.values()].reduce((a, b) => a + b, 0)
+
+  return `<div class="page">
+  <div class="page-head">
+    <span class="url">${escapeHtml(url)}</span>
+    ${visits.length > 1 ? `<span class="visits">×${visits.length}</span>` : ''}
+    ${local
+      ? `<a class="local" href="${escapeHtml(local)}">↗ open local</a>`
+      : `<span class="no-local">no HTML captured</span>`}
+  </div>
+  ${callItems
+      ? `<details><summary>${totalCalls} API call${totalCalls === 1 ? '' : 's'} fired</summary><ul class="calls">${callItems}</ul></details>`
+      : `<div class="visits" style="margin-top: 6px;">No API calls captured for this page.</div>`}
+</div>`
+}
+
+function methodClass(method: string): string {
+  const m = method.toLowerCase()
+  if (m === 'get') return 'm-get'
+  if (m === 'post') return 'm-post'
+  if (m === 'put' || m === 'patch') return 'm-put'
+  if (m === 'delete') return 'm-delete'
+  return 'm-other'
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
