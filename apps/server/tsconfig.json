@@ -1,7 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2022"],
+    // DOM is required for React component types (HTMLButtonElement, etc.).
+    // Workers types still take precedence at runtime; we never touch
+    // window/document from worker code.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["@cloudflare/workers-types"],
     "jsx": "react-jsx",
     "rootDir": "src"

@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 16% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 16% 14%;
+    --primary: 217 91% 55%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 222 16% 20%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 40%;
+    --accent: 217 91% 55%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 65% 56%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 217 91% 55%;
+    --radius: 0.5rem;
+
+    --success: 144 67% 36%;
+    --warning: 41 100% 36%;
+    --danger: 0 65% 56%;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: 222 18% 8%;
+      --foreground: 220 13% 91%;
+      --card: 222 16% 11%;
+      --card-foreground: 220 13% 91%;
+      --primary: 217 91% 65%;
+      --primary-foreground: 222 18% 8%;
+      --secondary: 222 14% 16%;
+      --secondary-foreground: 220 13% 91%;
+      --muted: 222 14% 16%;
+      --muted-foreground: 220 9% 60%;
+      --accent: 217 91% 65%;
+      --accent-foreground: 222 18% 8%;
+      --destructive: 0 70% 60%;
+      --destructive-foreground: 222 18% 8%;
+      --border: 222 14% 18%;
+      --input: 222 14% 18%;
+      --ring: 217 91% 65%;
+
+      --success: 144 60% 50%;
+      --warning: 41 90% 60%;
+      --danger: 0 70% 60%;
+    }
+  }
+
+  * { @apply border-border; box-sizing: border-box; }
+  body {
+    @apply bg-background text-foreground;
+    font-size: 14px;
+    line-height: 1.55;
+    margin: 0;
+  }
+  code {
+    @apply font-mono;
+    font-size: 0.875em;
+  }
+  pre {
+    @apply bg-muted rounded-md p-4 overflow-auto font-mono;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  pre code { font-size: inherit; background: transparent; padding: 0; }
+}

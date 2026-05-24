@@ -5,23 +5,38 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "build": "wrangler deploy --dry-run --outdir=dist",
-    "deploy": "wrangler deploy",
+    "dev": "pnpm run build:css && wrangler dev",
+    "build:css": "tailwindcss -i ./src/styles/global.css -o ./public/global.css --minify",
+    "build": "pnpm run build:css && wrangler deploy --dry-run --outdir=dist",
+    "deploy": "pnpm run build:css && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "tail": "wrangler tail"
   },
   "dependencies": {
     "@cloudflare/puppeteer": "^1.1.0",
+    "@radix-ui/react-collapsible": "^1.1.2",
+    "@radix-ui/react-slot": "^1.1.1",
     "@unwrap/protocol": "workspace:*",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "fflate": "^0.8.3",
     "hono": "^4.6.13",
+    "lucide-react": "^0.469.0",
     "pixelmatch": "^7.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^2.6.0",
     "upng-js": "^2.1.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250109.0",
     "@types/pixelmatch": "^5.2.6",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.6.3",
     "wrangler": "^4.94.0"
   }

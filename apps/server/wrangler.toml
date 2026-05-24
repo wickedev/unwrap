@@ -1,7 +1,13 @@
 name = "unwrap-server"
-main = "src/index.ts"
+main = "src/index.tsx"
 compatibility_date = "2025-01-15"
 compatibility_flags = ["nodejs_compat"]
+
+[assets]
+# Tailwind-compiled CSS + future static files. Served by the Workers
+# runtime ahead of the Worker code; reference as /global.css from pages.
+directory = "./public"
+binding = "ASSETS"
 
 [[kv_namespaces]]
 binding = "OAUTH_STATE"
