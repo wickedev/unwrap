@@ -198,18 +198,28 @@ export function App(): React.JSX.Element {
         ) : (
           <Button
             disabled={busy || !activeTab?.id}
-            onClick={() => activeTab?.id && wrap(async () => {
+            onClick={() => wrap(async () => {
+              // Don't trust the cached activeTab — Chrome may have closed
+              // it or focus shifted to a chrome:// page since we queried.
+              // Re-query at the click moment so the tabId we capture is
+              // guaranteed live, then sanity-check the URL.
+              const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+              const tab = tabs[0]
+              if (!tab?.id) throw new Error('No active tab found. Open the page you want to record in any window first.')
+              const url = tab.url ?? ''
+              if (!/^https?:\/\//i.test(url)) {
+                throw new Error(`Cannot record this tab: ${url || '(unknown URL)'}. Open a regular http(s) page first, then click the Unwrap toolbar icon on THAT tab and try again.`)
+              }
               // Mint the tabCapture stream id HERE, in the sidepanel
               // click handler — this is where Chrome's user-activation
               // transient state lives. Posting the streamId through to
               // the SW lets the offscreen recorder consume it without
               // re-checking the user gesture (which would be lost by
               // the time the SW handler runs).
-              const tabId = activeTab!.id!
-              const { videoStreamId, videoStreamError } = await mintVideoStreamId(tabId)
+              const { videoStreamId, videoStreamError } = await mintVideoStreamId(tab.id)
               return send({
                 kind: 'start_session',
-                tabId,
+                tabId: tab.id,
                 ...(videoStreamId ? { videoStreamId } : {}),
                 ...(videoStreamError ? { videoStreamError } : {}),
               })
