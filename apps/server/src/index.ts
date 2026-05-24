@@ -68,6 +68,13 @@ import { ProjectPerformancePage } from './pages/project-performance'
 import { analyzeTestCoverage } from './test-coverage'
 import { TestCoveragePage } from './pages/test-coverage'
 import {
+  addCanonicalTest,
+  listCanonicalTests,
+  removeCanonicalTest,
+} from './storage/canonical-tests'
+import { buildTestSuiteBundle } from './test-suite-bundle'
+import { TestSuitePage } from './pages/test-suite'
+import {
   getOrCreateShareToken,
   readShareToken,
   resolveShareToken,
@@ -519,7 +526,9 @@ app.get('/sessions/:id', async (c) => {
   const otherSameHost = allSessions
     .filter((s) => s.id !== id && s.host === record.summary.meta.host)
     .slice(0, 10)
-  return c.html(SessionDetailPage({ email, session: record, otherSameHost }))
+  const canonical = await listCanonicalTests(c.env, email, record.summary.meta.host)
+  const isCanonical = canonical.some((c) => c.sessionId === id)
+  return c.html(SessionDetailPage({ email, session: record, otherSameHost, isCanonical }))
 })
 
 app.get('/sessions/:id/api', async (c) => {
@@ -901,6 +910,92 @@ app.get('/projects/:host/api/mock', async (c) => {
   return new Response(body, {
     headers: {
       'content-type': 'application/javascript; charset=utf-8',
+      'content-disposition': `attachment; filename="${filename}"`,
+      'cache-control': 'private, no-store',
+    },
+  })
+})
+
+app.get('/projects/:host/tests', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const sessions = await loadProjectSessions(c.env, email, host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const canonical = await listCanonicalTests(c.env, email, host)
+  const sessionsById = new Map(sessions.map((s) => [s.id, s]))
+  const canonicalIds = new Set(canonical.map((c) => c.sessionId))
+  const candidates = sessions
+    .filter((s) => !!s.generated?.spec && !canonicalIds.has(s.id))
+    .sort((a, b) => b.uploadedAt - a.uploadedAt)
+    .map((s) => ({ sessionId: s.id, uploadedAt: s.uploadedAt }))
+  return c.html(TestSuitePage({ email, host, canonical, sessionsById, candidates }))
+})
+
+app.post('/projects/:host/tests', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const form = (await c.req.parseBody().catch(() => ({}))) as Record<string, string | File | undefined>
+  const sessionId = typeof form['sessionId'] === 'string' ? form['sessionId'] : ''
+  const name = typeof form['name'] === 'string' && form['name'].trim() ? form['name'].trim() : ''
+  const tagsRaw = typeof form['tags'] === 'string' ? form['tags'] : ''
+  if (!sessionId || !name) return c.redirect(`/projects/${encodeURIComponent(host)}/tests`, 302)
+  const tags = tagsRaw.split(',').map((t) => t.trim()).filter(Boolean)
+  await addCanonicalTest(c.env, email, host, { sessionId, name, tags })
+  return c.redirect(`/projects/${encodeURIComponent(host)}/tests`, 302)
+})
+
+app.post('/projects/:host/tests/:sessionId/remove', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const sessionId = c.req.param('sessionId')
+  await removeCanonicalTest(c.env, email, host, sessionId)
+  return c.redirect(`/projects/${encodeURIComponent(host)}/tests`, 302)
+})
+
+app.get('/projects/:host/tests.zip', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const sessions = await loadProjectSessions(c.env, email, host)
+  if (sessions.length === 0) return c.json(err('Not found'), 404)
+  const canonical = await listCanonicalTests(c.env, email, host)
+  const sessionsById = new Map(sessions.map((s) => [s.id, s]))
+  const { filename, bytes, testCount } = buildTestSuiteBundle({ host, canonical, sessionsById })
+  if (testCount === 0) return c.json(err('No canonical specs in the suite'), 404)
+  return new Response(bytes, {
+    headers: {
+      'content-type': 'application/zip',
+      'content-disposition': `attachment; filename="${filename}"`,
+      'cache-control': 'private, no-store',
+    },
+  })
+})
+
+app.get('/share/:token/tests', async (c) => {
+  const r = await resolveShare(c.env, c.req.param('token'))
+  if (!r) return c.html(LoginPage(), 404)
+  const sessions = await loadProjectSessions(c.env, r.email, r.host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const canonical = await listCanonicalTests(c.env, r.email, r.host)
+  const sessionsById = new Map(sessions.map((s) => [s.id, s]))
+  return c.html(TestSuitePage({ email: '', host: r.host, canonical, sessionsById, candidates: [], share: { token: c.req.param('token') } }))
+})
+
+app.get('/share/:token/tests.zip', async (c) => {
+  const r = await resolveShare(c.env, c.req.param('token'))
+  if (!r) return c.json(err('Not found'), 404)
+  const sessions = await loadProjectSessions(c.env, r.email, r.host)
+  if (sessions.length === 0) return c.json(err('Not found'), 404)
+  const canonical = await listCanonicalTests(c.env, r.email, r.host)
+  const sessionsById = new Map(sessions.map((s) => [s.id, s]))
+  const { filename, bytes, testCount } = buildTestSuiteBundle({ host: r.host, canonical, sessionsById })
+  if (testCount === 0) return c.json(err('No canonical specs in the suite'), 404)
+  return new Response(bytes, {
+    headers: {
+      'content-type': 'application/zip',
       'content-disposition': `attachment; filename="${filename}"`,
       'cache-control': 'private, no-store',
     },

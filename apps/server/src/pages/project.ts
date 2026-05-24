@@ -99,6 +99,16 @@ export function ProjectPage({
 
       <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
         <div style="min-width: 0;">
+          <strong style="font-size: 13px;">🧪 Canonical test suite</strong>
+          <div class="meta" style="font-size: 11px; margin-top: 2px;">
+            Curate which sessions' generated specs become your project's golden tests. Bundle exports as a runnable Playwright project ready for CI.
+          </div>
+        </div>
+        <a class="btn secondary" href="${link('/tests')}">→ Open test suite</a>
+      </div>
+
+      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+        <div style="min-width: 0;">
           <strong style="font-size: 13px;">✅ Test coverage map</strong>
           <div class="meta" style="font-size: 11px; margin-top: 2px;">
             Cross-references every generated Playwright spec against the project's known routes and endpoints — surfaces untested surface area prioritized by traffic. The "what tests are we missing?" page.

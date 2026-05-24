@@ -8,10 +8,12 @@ export function SessionDetailPage({
   email,
   session,
   otherSameHost = [],
+  isCanonical = false,
 }: {
   email: string
   session: StoredSession
   otherSameHost?: SessionListItem[]
+  isCanonical?: boolean
 }): Renderable {
   const { summary, generated } = session
   const counts = Object.entries(summary.meta.counts ?? {}).filter(([, v]) => v && v > 0)
@@ -96,6 +98,24 @@ export function SessionDetailPage({
                 : ''}
               <h3 style="margin-top:14px; font-size:13px;">Spec</h3>
               <pre id="spec-pre">${generated.spec}</pre>
+              <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);">
+                ${isCanonical
+                  ? html`<div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+                      <span style="color: #1f9d55; font-weight: 600; font-size: 12px;">✓ Marked as canonical for <a href="/projects/${encodeURIComponent(session.summary.meta.host)}/tests">${session.summary.meta.host}</a></span>
+                      <form method="post" action="/projects/${encodeURIComponent(session.summary.meta.host)}/tests/${encodeURIComponent(session.id)}/remove" style="margin: 0;"
+                        onsubmit="return confirm('Remove from canonical suite?')">
+                        <button class="btn secondary" style="font-size: 11px; padding: 4px 10px;">Unmark</button>
+                      </form>
+                    </div>`
+                  : html`<form method="post" action="/projects/${encodeURIComponent(session.summary.meta.host)}/tests" style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+                      <input type="hidden" name="sessionId" value="${session.id}" />
+                      <input type="text" name="name" required maxlength="80" placeholder="Test name (e.g. login-and-dashboard)"
+                        style="flex: 1; min-width: 200px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; font-size: 12px;" />
+                      <input type="text" name="tags" maxlength="120" placeholder="tags (comma-separated)"
+                        style="flex: 1; min-width: 160px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; font-size: 12px;" />
+                      <button type="submit" class="btn">★ Mark as canonical test</button>
+                    </form>`}
+              </div>
             </div>
           `
         : ''}
