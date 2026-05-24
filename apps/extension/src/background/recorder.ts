@@ -97,6 +97,16 @@ export class TabRecorder {
     this.scheduleStorageStateCapture('session_start')
     this.scheduleSnapshot('session_start')
     await this.notifyContentScript('recording_started')
+
+    // Even though Network.enable only sees requests from now on, the page
+    // was probably already loaded before recording started — meaning all
+    // its HTML/CSS/JS requests have already fired and we'd miss them.
+    // Page.getResourceTree gives us everything the page currently knows
+    // about, and Page.getResourceContent lets us read each one's body.
+    // Fire-and-forget — non-fatal if any of these fail.
+    void this.captureExistingResources('session_start').catch((e) => {
+      console.debug('[unwrap] captureExistingResources failed at start', e)
+    })
   }
 
   async stop(): Promise<void> {
@@ -109,6 +119,15 @@ export class TabRecorder {
     chrome.webNavigation.onCommitted.removeListener(this.onNavCommitted)
     chrome.webNavigation.onHistoryStateUpdated.removeListener(this.onHistoryStateUpdated)
     await this.notifyContentScript('recording_stopped')
+
+    // Re-scan the resource tree at stop time — SPAs lazy-load chunks
+    // after navigation, so the set is different from session_start.
+    // Run BEFORE detach so the CDP commands still work.
+    try {
+      await this.captureExistingResources('session_end')
+    } catch (e) {
+      console.debug('[unwrap] captureExistingResources failed at stop', e)
+    }
 
     try {
       const cov = await this.coverage.stopAndCollect(this.sessionId)
@@ -589,6 +608,157 @@ export class TabRecorder {
   private decrementInflight(): void {
     if (this.inflightCount > 0) this.inflightCount--
   }
+
+  // Walks the page's current frame tree, fetches every resource the
+  // page knows about via Page.getResourceContent, and synthesizes
+  // request/response/body events so collectStaticAssets can pick them
+  // up the same way as live captures. Crucial for capturing assets
+  // that loaded BEFORE the recorder attached.
+  private resourcesSeen = new Set<string>()
+  private async captureExistingResources(phase: 'session_start' | 'session_end'): Promise<void> {
+    if (!this.attached) return
+    const target: chrome.debugger.Debuggee = { tabId: this.tabId }
+    let tree: ResourceTreeResult
+    try {
+      tree = (await chrome.debugger.sendCommand(target, 'Page.getResourceTree', {})) as ResourceTreeResult
+    } catch (e) {
+      console.debug('[unwrap] Page.getResourceTree failed', e)
+      return
+    }
+    const flat = flattenResources(tree.frameTree)
+    let added = 0
+    for (const r of flat) {
+      if (this.resourcesSeen.has(r.url)) continue
+      if (!isCaptureCandidate(r)) continue
+      this.resourcesSeen.add(r.url)
+      try {
+        const resp = (await chrome.debugger.sendCommand(target, 'Page.getResourceContent', {
+          frameId: r.frameId,
+          url: r.url,
+        })) as { content: string; base64Encoded: boolean } | undefined
+        if (!resp || resp.content === undefined) continue
+        const bytes = resp.base64Encoded
+          ? Uint8Array.from(atob(resp.content), (c) => c.charCodeAt(0))
+          : new TextEncoder().encode(resp.content)
+        if (bytes.byteLength === 0) continue
+        const mime = r.mimeType || guessMimeFromUrl(r.url)
+        const blob = new Blob([bytes], { type: mime || 'application/octet-stream' })
+        const ref = makeId('body')
+        await putBlob(ref, this.sessionId, mime, blob)
+        const fakeId = `resource-tree-${phase}-${ref}`
+        const now = Date.now()
+        const reqEvent: RequestEvent = {
+          type: 'request',
+          sessionId: this.sessionId,
+          ts: now,
+          requestId: fakeId,
+          method: 'GET',
+          url: r.url,
+          headers: {},
+          resourceType: r.type,
+        }
+        const respMeta: ResponseEvent = {
+          type: 'response',
+          sessionId: this.sessionId,
+          ts: now,
+          requestId: fakeId,
+          status: 200,
+          statusText: `from-resource-tree:${phase}`,
+          url: r.url,
+          headers: {},
+          mimeType: mime,
+          fromServiceWorker: false,
+          fromDiskCache: true,
+        }
+        const respBody: ResponseEvent = {
+          type: 'response',
+          sessionId: this.sessionId,
+          ts: now,
+          requestId: fakeId,
+          status: 0,
+          statusText: 'body',
+          url: r.url,
+          headers: {},
+          mimeType: mime,
+          fromServiceWorker: false,
+          fromDiskCache: true,
+          bodyRef: ref,
+          bodySize: bytes.byteLength,
+        }
+        await appendEvent(reqEvent)
+        await appendEvent(respMeta)
+        await appendEvent(respBody)
+        await this.bumpCounts({ requests: 1, responses: 1 })
+        added++
+      } catch (e) {
+        console.debug('[unwrap] Page.getResourceContent failed for', r.url, e)
+      }
+    }
+    if (added > 0) console.info('[unwrap] captured', added, 'pre-existing resources at', phase)
+  }
+}
+
+interface FrameResource {
+  url: string
+  type: string
+  mimeType: string
+  frameId: string
+}
+
+interface ResourceTreeFrame {
+  frame: { id: string; parentId?: string; url: string }
+  childFrames?: ResourceTreeFrame[]
+  resources: { url: string; type: string; mimeType: string; failed?: boolean }[]
+}
+
+interface ResourceTreeResult {
+  frameTree: ResourceTreeFrame
+}
+
+function flattenResources(tree: ResourceTreeFrame): FrameResource[] {
+  const out: FrameResource[] = []
+  const walk = (node: ResourceTreeFrame) => {
+    const frameId = node.frame.id
+    for (const r of node.resources ?? []) {
+      if (r.failed) continue
+      out.push({ url: r.url, type: r.type, mimeType: r.mimeType, frameId })
+    }
+    for (const child of node.childFrames ?? []) walk(child)
+  }
+  walk(tree)
+  return out
+}
+
+function isCaptureCandidate(r: FrameResource): boolean {
+  if (!r.url) return false
+  if (r.url.startsWith('data:') || r.url.startsWith('blob:') || r.url.startsWith('chrome-extension:')) return false
+  // Same filter as static-assets.ts isStaticAssetMime — accept text-ish
+  // resources, skip media/binary that would just bloat the upload.
+  const m = (r.mimeType || guessMimeFromUrl(r.url)).toLowerCase()
+  if (!m) return false
+  if (m.startsWith('text/')) return true
+  if (m.includes('javascript')) return true
+  if (m.includes('json')) return true
+  if (m.includes('xml')) return true
+  if (m.includes('svg')) return true
+  if (m.includes('font') || m === 'application/vnd.ms-fontobject') return true
+  if (m.startsWith('image/')) return true
+  return false
+}
+
+function guessMimeFromUrl(url: string): string {
+  const ext = (url.split('?')[0] || '').split('.').pop()?.toLowerCase() ?? ''
+  const map: Record<string, string> = {
+    html: 'text/html', htm: 'text/html',
+    css: 'text/css',
+    js: 'application/javascript', mjs: 'application/javascript',
+    json: 'application/json',
+    svg: 'image/svg+xml',
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', ico: 'image/x-icon',
+    woff: 'font/woff', woff2: 'font/woff2', ttf: 'font/ttf', otf: 'font/otf',
+    xml: 'application/xml',
+  }
+  return map[ext] ?? ''
 }
 
 // Heuristic — a storage state "looks logged in" if a cookie name or
