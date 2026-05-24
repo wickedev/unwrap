@@ -57,6 +57,8 @@ import { aggregateWsChannels } from './project-websockets'
 import { ProjectWebSocketsPage } from './pages/project-websockets'
 import { searchSessions } from './search'
 import { SearchPage } from './pages/search'
+import { analyzeProjectSecurity } from './project-security'
+import { ProjectSecurityPage } from './pages/project-security'
 import { verifySession } from './verify'
 import { diffSessions, summarizeRegression } from './sessiondiff'
 import { computeCrossSessionVisualDiff } from './visualcrossdiff'
@@ -628,6 +630,16 @@ app.get('/projects/:host/api/mock', async (c) => {
       'cache-control': 'private, no-store',
     },
   })
+})
+
+app.get('/projects/:host/security', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const sessions = await loadProjectSessions(c.env, email, host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const report = analyzeProjectSecurity(host, sessions)
+  return c.html(ProjectSecurityPage({ email, report }))
 })
 
 app.get('/projects/:host/websockets', async (c) => {

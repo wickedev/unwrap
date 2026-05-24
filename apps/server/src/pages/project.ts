@@ -51,6 +51,16 @@ export function ProjectPage({
 
       <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
         <div style="min-width: 0;">
+          <strong style="font-size: 13px;">🔒 Security overview</strong>
+          <div class="meta" style="font-size: 11px; margin-top: 2px;">
+            Heuristic findings from captured network + storage data: auth scheme per endpoint, secrets in URLs, mixed content, cross-origin requests, cookie/localStorage inventory, login-redirect surface.
+          </div>
+        </div>
+        <a class="btn secondary" href="/projects/${encodeURIComponent(digest.host)}/security">→ Open security report</a>
+      </div>
+
+      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+        <div style="min-width: 0;">
           <strong style="font-size: 13px;">📡 WebSocket channels</strong>
           <div class="meta" style="font-size: 11px; margin-top: 2px;">
             Realtime traffic captured alongside the REST/GraphQL surface — channels grouped by endpoint, frames bucketed into message types using the JSON discriminator field. The protocol that the API inventory misses.
