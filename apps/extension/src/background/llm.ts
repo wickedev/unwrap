@@ -71,8 +71,9 @@ export async function uploadSessionToServer(sessionId: string): Promise<UploadRe
     try {
       const blobs = await listBlobs(sessionId)
       const videoBlob = blobs.find((b) => b.ref === meta.video!.ref)
+      console.info('[unwrap-video] upload prep', { ref: meta.video.ref, found: !!videoBlob, size: videoBlob?.data?.size })
       if (videoBlob) {
-        await authedFetch(`/api/sessions/${encodeURIComponent(result.id)}/video`, {
+        const videoResp = await authedFetch(`/api/sessions/${encodeURIComponent(result.id)}/video`, {
           method: 'POST',
           headers: {
             'content-type': meta.video.mimeType,
@@ -80,10 +81,19 @@ export async function uploadSessionToServer(sessionId: string): Promise<UploadRe
           },
           body: videoBlob.data,
         })
+        console.info('[unwrap-video] upload response', { status: videoResp.status, ok: videoResp.ok })
+        if (!videoResp.ok) {
+          const text = await videoResp.text().catch(() => '')
+          console.warn('[unwrap-video] upload non-ok body', text.slice(0, 500))
+        }
+      } else {
+        console.warn('[unwrap-video] meta.video set but blob not found in IndexedDB')
       }
     } catch (e) {
-      console.warn('[unwrap] video upload failed', e)
+      console.warn('[unwrap-video] upload failed', e)
     }
+  } else {
+    console.info('[unwrap-video] no video metadata on session — skipping upload')
   }
   return result
 }

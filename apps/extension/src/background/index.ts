@@ -228,7 +228,18 @@ async function stopSession(
 }
 
 async function persistVideo(sessionId: string, result: StopResult): Promise<void> {
-  if (!result.base64 || !result.mimeType) return
+  console.info('[unwrap-video] persistVideo', {
+    sessionId,
+    hasBase64: !!result.base64,
+    base64Length: result.base64?.length ?? 0,
+    mimeType: result.mimeType,
+    sizeBytes: result.sizeBytes,
+    durationMs: result.durationMs,
+  })
+  if (!result.base64 || !result.mimeType) {
+    console.warn('[unwrap-video] persistVideo skipped — offscreen returned no blob (no chunks captured?)')
+    return
+  }
   const bytes = Uint8Array.from(atob(result.base64), (c) => c.charCodeAt(0))
   const blob = new Blob([bytes], { type: result.mimeType })
   // Store under a deterministic ref so the uploader can find it without
@@ -243,6 +254,7 @@ async function persistVideo(sessionId: string, result: StopResult): Promise<void
     durationMs: result.durationMs ?? 0,
   }
   await putSession(meta)
+  console.info('[unwrap-video] persisted to IndexedDB; will upload on session POST')
 }
 
 async function markStopped(sessionId: string): Promise<SessionMeta | undefined> {

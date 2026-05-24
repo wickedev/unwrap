@@ -21,6 +21,9 @@ interface StartMsg {
 interface StopMsg {
   kind: 'offscreen_video_stop'
 }
+interface PingMsg {
+  kind: 'offscreen_video_ping'
+}
 
 interface RecorderState {
   recorder: MediaRecorder
@@ -31,22 +34,39 @@ interface RecorderState {
 
 let state: RecorderState | null = null
 
-type OffscreenMsg = StartMsg | StopMsg
+type OffscreenMsg = StartMsg | StopMsg | PingMsg
+
+console.info('[unwrap-offscreen] recorder script loaded')
 
 chrome.runtime.onMessage.addListener((msg: unknown, _sender, sendResponse) => {
   if (!msg || typeof msg !== 'object' || !('kind' in msg)) return
   const m = msg as OffscreenMsg
+  if (m.kind === 'offscreen_video_ping') {
+    sendResponse({ ok: true })
+    return false
+  }
   if (m.kind === 'offscreen_video_start') {
+    console.info('[unwrap-offscreen] start requested', { width: (m as StartMsg).width, height: (m as StartMsg).height })
     void startRecording(m).then(
       () => sendResponse({ ok: true }),
-      (err) => sendResponse({ ok: false, error: String(err) }),
+      (err) => {
+        console.warn('[unwrap-offscreen] start failed', err)
+        sendResponse({ ok: false, error: String(err) })
+      },
     )
     return true
   }
   if (m.kind === 'offscreen_video_stop') {
+    console.info('[unwrap-offscreen] stop requested')
     void stopRecording().then(
-      (result) => sendResponse({ ok: true, ...result }),
-      (err) => sendResponse({ ok: false, error: String(err) }),
+      (result) => {
+        console.info('[unwrap-offscreen] stop done', { sizeBytes: result.sizeBytes, durationMs: result.durationMs, chunks: state ? 'still active?!' : 'cleared' })
+        sendResponse({ ok: true, ...result })
+      },
+      (err) => {
+        console.warn('[unwrap-offscreen] stop failed', err)
+        sendResponse({ ok: false, error: String(err) })
+      },
     )
     return true
   }
