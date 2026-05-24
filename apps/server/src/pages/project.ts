@@ -2,6 +2,7 @@ import { html, raw } from 'hono/html'
 import { Layout, type Renderable } from './layout'
 import type { ProjectDigest, EndpointEntry } from '../project-aggregate'
 import { inferType } from '../schema-infer'
+import { buildRouteForest, renderRouteForestHtml, ROUTE_TREE_CSS } from '../route-tree'
 
 export function ProjectPage({
   email,
@@ -111,13 +112,8 @@ export function ProjectPage({
 
       ${digest.routes.length > 0
         ? html`<div class="section">
-            <h2>Route map (${digest.routes.length})</h2>
-            <div class="card">
-              ${digest.routes.map((r) => html`<div style="display: flex; gap: 8px; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border);">
-                <code style="font-size: 12px; word-break: break-all;">${r.url}</code>
-                <span class="meta" style="white-space: nowrap; font-size: 11px;">${r.visitCount} visit${r.visitCount === 1 ? '' : 's'} · ${r.sessionCount} session${r.sessionCount === 1 ? '' : 's'}</span>
-              </div>`)}
-            </div>
+            <h2>Route tree (${digest.routes.length})</h2>
+            <div class="card">${raw(renderRouteForestHtml(buildRouteForest(digest.routes)))}</div>
           </div>`
         : ''}
 
@@ -135,7 +131,7 @@ export function ProjectPage({
           </div>`
         : ''}
 
-      <style>${raw(PROJECT_CSS)}</style>
+      <style>${raw(PROJECT_CSS)}${raw(ROUTE_TREE_CSS)}</style>
     `,
   })
 }
