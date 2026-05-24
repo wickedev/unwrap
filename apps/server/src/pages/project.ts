@@ -29,6 +29,16 @@ export function ProjectPage({
         ${kpi('Static assets', digest.staticAssets.length, 'var(--muted)')}
       </div>
 
+      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+        <div style="min-width: 0;">
+          <strong style="font-size: 13px;">🕸 Page → API dependency graph</strong>
+          <div class="meta" style="font-size: 11px; margin-top: 2px;">
+            Bipartite visualization: pages on the left, endpoints + GraphQL ops on the right, edges weighted by call count across every captured session. Reveals which endpoints are page-specific vs. cross-cutting.
+          </div>
+        </div>
+        <a class="btn secondary" href="/projects/${encodeURIComponent(digest.host)}/graph">→ Open graph</a>
+      </div>
+
       <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; border-color: var(--accent);">
         <div style="min-width: 0;">
           <strong style="font-size: 13px;">📋 AI service brief</strong>

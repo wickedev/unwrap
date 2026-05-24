@@ -45,6 +45,8 @@ import { buildOpenApiFromProject, buildOpenApiFromSession } from './openapi-expo
 import { buildPostmanFromProject, buildPostmanFromSession } from './postman-export'
 import { loadOrGenerateNarrative } from './project-narrative'
 import { ProjectNarrativePage } from './pages/project-narrative'
+import { buildProjectGraph } from './project-graph'
+import { ProjectGraphPage } from './pages/project-graph'
 import { verifySession } from './verify'
 import { diffSessions, summarizeRegression } from './sessiondiff'
 import { computeCrossSessionVisualDiff } from './visualcrossdiff'
@@ -593,6 +595,16 @@ app.get('/projects/:host/api/mock', async (c) => {
       'cache-control': 'private, no-store',
     },
   })
+})
+
+app.get('/projects/:host/graph', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const sessions = await loadProjectSessions(c.env, email, host)
+  if (sessions.length === 0) return c.html(LoginPage(), 404)
+  const graph = buildProjectGraph(sessions)
+  return c.html(ProjectGraphPage({ email, host, graph }))
 })
 
 app.get('/projects/:host/narrative', async (c) => {
