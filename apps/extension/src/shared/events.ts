@@ -273,7 +273,7 @@ export interface KeyEvent extends BaseEvent {
 export type ActionEvent = ClickEvent | InputEvent | ChangeEvent | SubmitEvent | KeyEvent
 
 export type RuntimeMessage =
-  | { kind: 'start_session'; tabId: number }
+  | { kind: 'start_session'; tabId: number; videoStreamId?: string; videoStreamError?: string }
   | { kind: 'stop_session'; sessionId: string }
   | { kind: 'list_sessions' }
   | { kind: 'get_session'; sessionId: string }

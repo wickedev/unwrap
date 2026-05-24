@@ -44,6 +44,29 @@ async function send<T>(msg: RuntimeMessage): Promise<T> {
   return res.result as T
 }
 
+// Issues a tab-capture stream id within the click handler so Chrome's
+// user-activation transient state is fresh. Returns either the id or
+// a verbatim error message that we forward to the SW for surfacing.
+async function mintVideoStreamId(tabId: number): Promise<{ videoStreamId?: string; videoStreamError?: string }> {
+  return new Promise((resolve) => {
+    try {
+      chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }, (streamId) => {
+        const lastErr = chrome.runtime.lastError
+        if (lastErr) {
+          console.warn('[unwrap-video] sidepanel getMediaStreamId failed', lastErr.message)
+          resolve({ videoStreamError: lastErr.message || 'unknown tabCapture error' })
+        } else if (!streamId) {
+          resolve({ videoStreamError: 'tabCapture returned empty stream id' })
+        } else {
+          resolve({ videoStreamId: streamId })
+        }
+      })
+    } catch (e) {
+      resolve({ videoStreamError: e instanceof Error ? e.message : String(e) })
+    }
+  })
+}
+
 export function App(): React.JSX.Element {
   const [activeTab, setActiveTab] = useState<chrome.tabs.Tab | null>(null)
   const [sessions, setSessions] = useState<SessionMeta[]>([])
@@ -175,7 +198,22 @@ export function App(): React.JSX.Element {
         ) : (
           <Button
             disabled={busy || !activeTab?.id}
-            onClick={() => activeTab?.id && wrap(() => send({ kind: 'start_session', tabId: activeTab.id! }))}
+            onClick={() => activeTab?.id && wrap(async () => {
+              // Mint the tabCapture stream id HERE, in the sidepanel
+              // click handler — this is where Chrome's user-activation
+              // transient state lives. Posting the streamId through to
+              // the SW lets the offscreen recorder consume it without
+              // re-checking the user gesture (which would be lost by
+              // the time the SW handler runs).
+              const tabId = activeTab!.id!
+              const { videoStreamId, videoStreamError } = await mintVideoStreamId(tabId)
+              return send({
+                kind: 'start_session',
+                tabId,
+                ...(videoStreamId ? { videoStreamId } : {}),
+                ...(videoStreamError ? { videoStreamError } : {}),
+              })
+            })}
             className="flex-1"
           >
             <span className="relative flex size-2 items-center justify-center">

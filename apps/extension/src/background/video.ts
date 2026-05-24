@@ -34,20 +34,22 @@ export interface StopResult {
   sizeBytes?: number
 }
 
-// Boots the offscreen document, mints a tab-capture stream id, and asks
-// the offscreen recorder to start. Designed to be a noop on failure —
-// any error just gets logged and the session continues without video.
-export async function startVideoRecording(sessionId: string, tabId: number): Promise<void> {
+// Boots the offscreen document and asks the recorder to start. The
+// stream id is usually minted by the sidepanel (where the user-gesture
+// transient state is fresh); if not provided, falls back to a SW-side
+// mint which mostly fails outside of an action-onClicked context.
+export async function startVideoRecording(sessionId: string, tabId: number, providedStreamId?: string): Promise<void> {
   if (active) {
     throw new Error(`Video recording already active for session ${active.sessionId}`)
   }
-  console.info('[unwrap-video] start requested', { sessionId, tabId })
-  // Mint the stream id BEFORE spinning up the offscreen document. tabCapture
-  // is gated on the activeTab user-activation token, which is freshest the
-  // closer we are to the user gesture — every extra await between here and
-  // the user click increases the chance of an "activeTab not granted" failure.
-  const streamId = await getTabStreamId(tabId)
-  if (!streamId) throw new Error('chrome.tabCapture refused to issue a stream id for this tab')
+  console.info('[unwrap-video] start requested', { sessionId, tabId, providedStreamId: !!providedStreamId })
+  let streamId = providedStreamId
+  if (!streamId) {
+    const result = await getTabStreamIdWithError(tabId)
+    if (result.error) throw new Error(result.error)
+    streamId = result.streamId
+  }
+  if (!streamId) throw new Error('chrome.tabCapture returned no stream id')
   console.info('[unwrap-video] got stream id', { length: streamId.length })
 
   await ensureOffscreen()
@@ -147,21 +149,24 @@ async function waitForOffscreenReady(): Promise<void> {
   throw new Error('offscreen recorder did not become ready in time')
 }
 
-function getTabStreamId(tabId: number): Promise<string | null> {
-  // Promise wrapper around the callback-style API.
+function getTabStreamIdWithError(tabId: number): Promise<{ streamId?: string; error?: string }> {
   return new Promise((resolve) => {
     try {
       chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }, (streamId) => {
-        if (chrome.runtime.lastError) {
-          console.warn('[unwrap-video] tabCapture.getMediaStreamId failed', chrome.runtime.lastError.message)
-          resolve(null)
+        const lastErr = chrome.runtime.lastError
+        if (lastErr) {
+          console.warn('[unwrap-video] tabCapture.getMediaStreamId failed', lastErr.message)
+          resolve({ error: lastErr.message || 'getMediaStreamId failed' })
+        } else if (!streamId) {
+          resolve({ error: 'getMediaStreamId returned empty id' })
         } else {
-          resolve(streamId || null)
+          resolve({ streamId })
         }
       })
     } catch (e) {
-      console.warn('[unwrap-video] tabCapture call threw', e)
-      resolve(null)
+      const m = e instanceof Error ? e.message : String(e)
+      console.warn('[unwrap-video] tabCapture call threw', m)
+      resolve({ error: m })
     }
   })
 }

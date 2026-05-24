@@ -64,7 +64,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 async function handle(msg: RuntimeMessage, sender: chrome.runtime.MessageSender): Promise<unknown> {
   switch (msg.kind) {
     case 'start_session':
-      return startSession(msg.tabId)
+      return startSession(msg.tabId, msg.videoStreamId, msg.videoStreamError)
     case 'stop_session':
       return stopSession(msg.sessionId, { autoUpload: true })
     case 'list_sessions': {
@@ -144,7 +144,7 @@ function findRecorder(sessionId: string): TabRecorder | undefined {
   return undefined
 }
 
-async function startSession(tabId: number): Promise<SessionMeta> {
+async function startSession(tabId: number, videoStreamId?: string, videoStreamError?: string): Promise<SessionMeta> {
   if (recorders.has(tabId)) {
     throw new Error('a session is already recording in this tab')
   }
@@ -188,21 +188,34 @@ async function startSession(tabId: number): Promise<SessionMeta> {
     await putSession(meta)
     throw e
   }
-  // Fire-and-forget video recording — non-fatal if it fails (chrome://
-  // pages, PDF viewer, etc.). We just log and let the rest of the
-  // session capture proceed without video. Failure reason is stashed on
-  // the session so the server UI can surface it.
-  void startVideoRecording(sessionId, tabId).catch(async (e) => {
-    const message = e instanceof Error ? e.message : String(e)
-    console.warn('[unwrap] video recording could not start', message)
-    try {
-      const m = await getSession(sessionId)
-      if (m) {
-        m.videoError = friendlyVideoError(message)
-        await putSession(m)
-      }
-    } catch {}
-  })
+  // If the sidepanel already failed to mint a stream id (e.g., activeTab
+  // wasn't actually granted), record that and skip the recording attempt.
+  if (videoStreamError) {
+    console.warn('[unwrap] video stream-id minting failed in sidepanel', videoStreamError)
+    meta.videoError = friendlyVideoError(videoStreamError)
+    await putSession(meta)
+  } else if (videoStreamId) {
+    // Fire-and-forget video recording — non-fatal if it fails. Failure
+    // reason is stashed on the session so the server UI can surface it.
+    void startVideoRecording(sessionId, tabId, videoStreamId).catch(async (e) => {
+      const message = e instanceof Error ? e.message : String(e)
+      console.warn('[unwrap] video recording could not start', message)
+      try {
+        const m = await getSession(sessionId)
+        if (m) {
+          m.videoError = friendlyVideoError(message)
+          await putSession(m)
+        }
+      } catch {}
+    })
+  } else {
+    // Caller (legacy sidepanel without streamId minting) — best-effort
+    // fall back to SW-side mint. Will likely fail with activeTab if the
+    // user gesture has worn off.
+    void startVideoRecording(sessionId, tabId).catch((e) => {
+      console.warn('[unwrap] video recording could not start', e)
+    })
+  }
   return meta
 }
 
