@@ -14,19 +14,13 @@ export function ProjectPage({
   email: string
   digest: ProjectDigest
   otherHosts?: string[]
-  // When set, page renders in read-only "share viewer" mode. Internal
-  // links route through /share/:token instead of /projects/:host so the
-  // anonymous viewer can navigate the sub-pages.
   share?: { token: string }
-  // For the OWNER view only — the currently-active share URL, if any,
-  // so the page can render the "shared" controls.
   shareUrl?: { url: string; createdAt: number } | null
 }): Renderable {
   const restEndpoints = digest.endpoints.filter((e) => !e.graphql)
   const graphqlEndpoints = digest.endpoints.filter((e) => e.graphql)
   const isShareView = !!share
-  // Resolve internal navigation paths against the right prefix so the
-  // share viewer's links stay inside the share envelope.
+  // Internal link helper — keeps share-mode navigation inside /share/<token>/...
   const link = (subPath: string) =>
     isShareView
       ? `/share/${share!.token}${subPath}`
@@ -37,275 +31,181 @@ export function ProjectPage({
     email,
     body: html`
       ${isShareView
-        ? html`<div class="card" style="background: color-mix(in oklab, #7c4ac2 6%, transparent); border-color: color-mix(in oklab, #7c4ac2 35%, var(--border)); margin-bottom: 12px;">
-            <strong style="font-size: 13px;">🔗 Shared read-only view</strong>
-            <div class="meta" style="font-size: 11px; margin-top: 2px;">
-              You're viewing an aggregated capture of <code>${digest.host}</code> via a read-only share link. Sign in for full access if you have an Unwrap account.
-            </div>
+        ? html`<div class="share-banner">
+            <strong>🔗 Shared read-only view</strong>
+            <span class="meta">Sign in for full access if you have an Unwrap account.</span>
           </div>`
-        : html`<p><a href="/">← back to sessions</a></p>`}
-      <h2 style="margin-top: 4px;">${digest.host}</h2>
-      <p class="muted">Aggregated across every captured session for this host. Type inference, GraphQL widening, and route maps merge samples from all sessions for a fuller picture than any single capture.</p>
+        : html`<p style="margin-top: 0;"><a href="/">← back to sessions</a></p>`}
 
-      <div class="card" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-bottom: 16px;">
-        ${kpi('Sessions', digest.sessionCount, 'var(--fg)')}
-        ${kpi('Unique routes', digest.routes.length, '#2f6feb')}
-        ${kpi('Unique endpoints', restEndpoints.length, '#1f9d55')}
-        ${kpi('GraphQL ops', graphqlEndpoints.length, '#7c4ac2')}
-        ${kpi('Static assets', digest.staticAssets.length, 'var(--muted)')}
+      <!-- Hero: host + KPI strip + AI brief CTA in one prominent card -->
+      <div class="hero">
+        <div class="hero-head">
+          <div>
+            <h2 class="hero-title">${digest.host}</h2>
+            <div class="muted hero-sub">Aggregated across ${digest.sessionCount} session${digest.sessionCount === 1 ? '' : 's'}. Type inference, GraphQL widening, and route maps merge samples from all sessions.</div>
+          </div>
+          <a class="btn hero-cta" href="${link('/narrative')}">📋 AI service brief →</a>
+        </div>
+        <div class="kpis">
+          ${kpi('Sessions', digest.sessionCount, 'var(--fg)')}
+          ${kpi('Routes', digest.routes.length, '#2f6feb')}
+          ${kpi('Endpoints', restEndpoints.length, '#1f9d55')}
+          ${kpi('GraphQL', graphqlEndpoints.length, '#7c4ac2')}
+          ${kpi('Assets', digest.staticAssets.length, 'var(--muted)')}
+        </div>
       </div>
 
-      ${!isShareView && otherHosts.length > 0
-        ? html`<div class="card" style="margin-bottom: 16px;">
-            <div style="display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; margin-bottom: 4px;">
-              <strong style="font-size: 13px;">⇄ Compare with another project</strong>
-              <span class="meta" style="font-size: 11px;">Diff endpoints / routes / GraphQL ops / response schemas against another host.</span>
-            </div>
-            <form method="get" action="${link('/diff/__placeholder__')}" onsubmit="event.preventDefault(); const t = this.querySelector('select').value; if (t) window.location.href = '${link('/diff/')}' + encodeURIComponent(t)" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px;">
-              <label class="meta" style="font-size: 12px;">vs.</label>
-              <select required style="padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit;">
-                <option value="">— pick a project —</option>
-                ${otherHosts.map((h) => html`<option value="${h}">${h}</option>`)}
-              </select>
-              <button class="btn secondary" type="submit">Open diff →</button>
-            </form>
-          </div>`
-        : ''}
+      <!-- ANALYZE section: visual + structural insight -->
+      ${section('🔍 Analyze', 'How the service is shaped and how it performs.', [
+        miniCard(link('/graph'), '🕸 Dependency graph', 'Page → API edges weighted by call count'),
+        miniCard(link('/heatmap'), '🎯 Click heatmap', 'Click positions overlaid on captured screenshots'),
+        miniCard(link('/performance'), '⚡ Performance', 'Per-endpoint p50/p95/max + N+1 detection'),
+        miniCard(link('/websockets'), '📡 WebSockets', 'Realtime channels + message-type schemas'),
+        miniCard(link('/coverage'), '🧹 Dead code', 'V8 + CSS coverage; which chunks of the bundle are unused'),
+        !isShareView && otherHosts.length > 0
+          ? compareCard(link, otherHosts)
+          : null,
+      ])}
 
+      <!-- QUALITY section: security + a11y -->
+      ${section('🛡 Quality', 'Heuristic audits derived from captured runtime data.', [
+        miniCard(link('/security'), '🔒 Security', 'Auth scheme matrix, secrets in URLs, mixed content, cookie audit'),
+        miniCard(link('/a11y'), '♿ Accessibility', 'Missing names, alt text, labels — from CDP AX trees'),
+      ])}
+
+      <!-- TEST section: spec lifecycle -->
+      ${section('🧪 Test', 'Generate, curate, and evaluate tests for this service.', [
+        miniCard(link('/test-plan'), '📋 AI test plan', 'Gemini proposes prioritized scenarios from coverage gaps', { primary: true }),
+        miniCard(link('/test-coverage'), '✅ Test coverage map', 'Untested routes/endpoints prioritized by traffic'),
+        miniCard(link('/tests'), '🧪 Canonical test suite', 'Curate canonical specs; download as runnable Playwright project'),
+      ])}
+
+      <!-- EXPORT & INTEGRATE section -->
+      ${section('📦 Export & integrate', 'Take Unwrap data into your existing tooling.', [
+        miniDownload(link('/clone.zip'), '↓ Local clone bundle', 'Frontend + mock server + run.sh — the runnable deliverable', { primary: true }),
+        restEndpoints.length > 0 ? miniDownload(link('/api/mock'), '↓ Mock server', 'Stateful zero-dep Node.js mock for every endpoint') : null,
+        restEndpoints.length > 0 ? miniDownload(link('/openapi.json'), '↓ OpenAPI 3.0', 'Drop into Postman, openapi-typescript, etc.') : null,
+        restEndpoints.length > 0 ? miniDownload(link('/postman.json'), '↓ Postman collection', 'v2.1 — folders by tag, sample responses') : null,
+        digest.graphqlOps.length > 0 ? miniDownload(link('/graphql.txt'), '↓ GraphQL operations', `${digest.graphqlOps.length} ops merged across sessions`) : null,
+        !isShareView ? miniCard(link('/sentry'), '🐞 Sentry correlation', 'Match Sentry issues to the user flow that produced them') : null,
+      ])}
+
+      <!-- SHARE section (owner only) -->
       ${!isShareView
-        ? html`<div class="card" style="margin-bottom: 16px;">
-            <div style="display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; margin-bottom: 4px;">
-              <strong style="font-size: 13px;">🔗 Share this project (read-only)</strong>
-              <span class="meta" style="font-size: 11px;">Anyone with the link sees the same project view, no Unwrap account required. Revoke any time.</span>
-            </div>
-            ${shareUrl
-              ? html`<div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px;">
-                  <input type="text" readonly value="${shareUrl.url}" id="share-url-input"
-                    style="flex: 1; min-width: 240px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; font-family: ui-monospace, monospace; font-size: 12px;"
-                    onclick="this.select()" />
-                  <button type="button" class="btn secondary" onclick="navigator.clipboard.writeText(document.getElementById('share-url-input').value); this.textContent='Copied'; setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
-                  <form method="post" action="${link('/share/revoke')}" style="margin: 0;" onsubmit="return confirm('Revoke this share link? The URL will stop working immediately.')">
-                    <button type="submit" class="btn danger">Revoke</button>
-                  </form>
-                </div>
-                ${shareUrl.createdAt > 0
-                  ? html`<div class="meta" style="font-size: 11px; margin-top: 4px;">Created ${new Date(shareUrl.createdAt).toISOString().slice(0, 16).replace('T', ' ')}.</div>`
-                  : ''}`
-              : html`<form method="post" action="${link('/share')}" style="margin-top: 8px;">
-                  <button type="submit" class="btn secondary">Create share link</button>
-                </form>`}
-          </div>`
-        : ''}
-
-      ${!isShareView
-        ? html`<div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
-            <div style="min-width: 0;">
-              <strong style="font-size: 13px;">🐞 Sentry correlation</strong>
-              <div class="meta" style="font-size: 11px; margin-top: 2px;">
-                Cross-references recent Sentry issues against captured console errors. Surfaces "which user flow produced this error?" — the question Sentry alone can't answer.
-              </div>
-            </div>
-            <a class="btn secondary" href="${link('/sentry')}">→ Open Sentry view</a>
-          </div>`
-        : ''}
-
-      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
-        <div style="min-width: 0;">
-          <strong style="font-size: 13px;">📋 AI test plan</strong>
-          <div class="meta" style="font-size: 11px; margin-top: 2px;">
-            Gemini reads the surface + coverage + canonical suite and proposes prioritized scenarios with evidence and Playwright assertions. Skips what's already canonical. Pairs with the test coverage gap analysis.
-          </div>
-        </div>
-        <a class="btn" href="${link('/test-plan')}">→ Open test plan</a>
-      </div>
-
-      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
-        <div style="min-width: 0;">
-          <strong style="font-size: 13px;">🧪 Canonical test suite</strong>
-          <div class="meta" style="font-size: 11px; margin-top: 2px;">
-            Curate which sessions' generated specs become your project's golden tests. Bundle exports as a runnable Playwright project ready for CI.
-          </div>
-        </div>
-        <a class="btn secondary" href="${link('/tests')}">→ Open test suite</a>
-      </div>
-
-      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
-        <div style="min-width: 0;">
-          <strong style="font-size: 13px;">✅ Test coverage map</strong>
-          <div class="meta" style="font-size: 11px; margin-top: 2px;">
-            Cross-references every generated Playwright spec against the project's known routes and endpoints — surfaces untested surface area prioritized by traffic. The "what tests are we missing?" page.
-          </div>
-        </div>
-        <a class="btn secondary" href="${link('/test-coverage')}">→ Open test coverage</a>
-      </div>
-
-      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
-        <div style="min-width: 0;">
-          <strong style="font-size: 13px;">⚡ Performance</strong>
-          <div class="meta" style="font-size: 11px; margin-top: 2px;">
-            Per-endpoint p50/p90/p95/max latency rolled up across every session. Slowest individual calls + N+1 pattern detection (≥4 hits to the same endpoint within 1s). Latency = request → response body complete, via captured CDP timestamps.
-          </div>
-        </div>
-        <a class="btn secondary" href="${link('/performance')}">→ Open performance</a>
-      </div>
-
-      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
-        <div style="min-width: 0;">
-          <strong style="font-size: 13px;">♿ Accessibility findings</strong>
-          <div class="meta" style="font-size: 11px; margin-top: 2px;">
-            Runtime audit from captured AX trees: missing button/link names, alt text, form labels, focusable-but-hidden elements, duplicate ids, heading-level skips. Reflects what the user actually saw.
-          </div>
-        </div>
-        <a class="btn secondary" href="${link('/a11y')}">→ Open a11y report</a>
-      </div>
-
-      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
-        <div style="min-width: 0;">
-          <strong style="font-size: 13px;">🔒 Security overview</strong>
-          <div class="meta" style="font-size: 11px; margin-top: 2px;">
-            Heuristic findings from captured network + storage data: auth scheme per endpoint, secrets in URLs, mixed content, cross-origin requests, cookie/localStorage inventory, login-redirect surface.
-          </div>
-        </div>
-        <a class="btn secondary" href="${link('/security')}">→ Open security report</a>
-      </div>
-
-      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
-        <div style="min-width: 0;">
-          <strong style="font-size: 13px;">📡 WebSocket channels</strong>
-          <div class="meta" style="font-size: 11px; margin-top: 2px;">
-            Realtime traffic captured alongside the REST/GraphQL surface — channels grouped by endpoint, frames bucketed into message types using the JSON discriminator field. The protocol that the API inventory misses.
-          </div>
-        </div>
-        <a class="btn secondary" href="${link('/websockets')}">→ Open WS inventory</a>
-      </div>
-
-      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
-        <div style="min-width: 0;">
-          <strong style="font-size: 13px;">🧹 Code coverage / dead-code map</strong>
-          <div class="meta" style="font-size: 11px; margin-top: 2px;">
-            Per-file used vs. total bytes from V8 PreciseCoverage + CSS rule usage, aggregated across every captured session. Reveals which chunks of the bundle are dead weight at the URLs the user actually visited.
-          </div>
-        </div>
-        <a class="btn secondary" href="${link('/coverage')}">→ Open coverage</a>
-      </div>
-
-      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
-        <div style="min-width: 0;">
-          <strong style="font-size: 13px;">🎯 Click heatmap</strong>
-          <div class="meta" style="font-size: 11px; margin-top: 2px;">
-            Per-page heatmap of click positions, overlaid on a captured screenshot. Requires the new extension build with position capture — reload + record a fresh session if you don't see data.
-          </div>
-        </div>
-        <a class="btn secondary" href="${link('/heatmap')}">→ Open heatmap</a>
-      </div>
-
-      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
-        <div style="min-width: 0;">
-          <strong style="font-size: 13px;">🕸 Page → API dependency graph</strong>
-          <div class="meta" style="font-size: 11px; margin-top: 2px;">
-            Bipartite visualization: pages on the left, endpoints + GraphQL ops on the right, edges weighted by call count across every captured session. Reveals which endpoints are page-specific vs. cross-cutting.
-          </div>
-        </div>
-        <a class="btn secondary" href="${link('/graph')}">→ Open graph</a>
-      </div>
-
-      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; border-color: var(--accent);">
-        <div style="min-width: 0;">
-          <strong style="font-size: 13px;">📋 AI service brief</strong>
-          <div class="meta" style="font-size: 11px; margin-top: 2px;">
-            Gemini reads the captured screenshots, routes, API surface, GraphQL ops, and user actions, then writes a structured analysis: what this service is, the user journeys observed, tech stack hints with evidence, and a reverse-engineering checklist. Cached per project, regenerates on new uploads.
-          </div>
-        </div>
-        <a class="btn" href="${link('/narrative')}">→ Open service brief</a>
-      </div>
-
-      ${digest.endpoints.some((e) => !e.graphql)
-        ? html`<div class="card" style="margin-bottom: 16px;">
-            <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
-              <strong style="font-size: 13px;">↓ API exports</strong>
-              <span class="meta" style="font-size: 11px;">For Postman, Stoplight, Insomnia, openapi-typescript, openapi-generator, …</span>
-            </div>
-            <div class="meta" style="font-size: 11px; margin-bottom: 10px;">
-              OpenAPI 3.0 spec inferred from the union of every captured call across this project. Schemas use enums for small string sets, mark optional fields, and include captured request/response examples. Generate a TypeScript SDK with one line: <code>npx openapi-typescript ${escapeAttr(`openapi-${safeHost(digest.host)}.json`)} -o client.ts</code>.
-            </div>
-            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-              <a class="btn secondary" href="${link('/openapi.json')}" download>↓ OpenAPI 3.0 (.json)</a>
-              <a class="btn secondary" href="${link('/postman.json')}" download>↓ Postman collection (.json)</a>
+        ? html`<div class="proj-section">
+            <h2 class="proj-section-head">🔗 Share <span class="muted">Send a read-only link to anyone — no Unwrap account required.</span></h2>
+            <div class="card share-card">
+              ${shareUrl
+                ? html`<div class="share-controls">
+                    <input type="text" readonly value="${shareUrl.url}" id="share-url-input"
+                      onclick="this.select()" class="share-input" />
+                    <button type="button" class="btn secondary" onclick="navigator.clipboard.writeText(document.getElementById('share-url-input').value); this.textContent='Copied'; setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+                    <form method="post" action="${link('/share/revoke')}" style="margin: 0;" onsubmit="return confirm('Revoke this share link?')">
+                      <button type="submit" class="btn danger">Revoke</button>
+                    </form>
+                  </div>
+                  ${shareUrl.createdAt > 0
+                    ? html`<div class="meta share-meta">Created ${new Date(shareUrl.createdAt).toISOString().slice(0, 16).replace('T', ' ')}.</div>`
+                    : ''}`
+                : html`<form method="post" action="${link('/share')}" class="share-create">
+                    <button type="submit" class="btn">Create share link</button>
+                  </form>`}
             </div>
           </div>`
         : ''}
 
-      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; border-color: var(--accent);">
-        <div style="min-width: 0;">
-          <strong style="font-size: 13px;">↓ Runnable local clone</strong>
-          <div class="meta" style="font-size: 11px; margin-top: 2px;">
-            One zip with the latest captured frontend, an aggregated mock for every API ever called, and <code>run.sh</code> that starts both. Unzip → <code>./run.sh</code> → open <code>http://localhost:8080</code>. The complete reverse-engineering deliverable.
+      <!-- DETAILS — collapsed by default since this is the bulky stuff -->
+      <details class="proj-details" open>
+        <summary><h2 class="proj-section-head" style="display: inline; cursor: pointer;">📊 Details <span class="muted">Sessions, route tree, full endpoint list.</span></h2></summary>
+
+        <div class="proj-section">
+          <h3 class="proj-sub-head">Sessions (${digest.sessions.length})</h3>
+          <div class="session-badges">
+            ${digest.sessions
+              .slice()
+              .sort((a, b) => b.uploadedAt - a.uploadedAt)
+              .map((s) => isShareView
+                ? html`<span class="badge" title="${s.startedAt}">${s.id.slice(0, 8)} · ${formatAgo(s.uploadedAt)}</span>`
+                : html`<a class="badge" style="text-decoration: none;" href="/sessions/${s.id}" title="${s.startedAt}">${s.id.slice(0, 8)} · ${formatAgo(s.uploadedAt)}</a>`)}
           </div>
         </div>
-        <a class="btn" href="${link('/clone.zip')}" download>↓ Download clone.zip</a>
-      </div>
 
-      ${digest.graphqlOps.length > 0
-        ? html`<div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
-            <div style="min-width: 0;">
-              <strong style="font-size: 13px;">Aggregated GraphQL operations</strong>
-              <div class="meta" style="font-size: 11px; margin-top: 2px;">
-                ${digest.graphqlOps.length} unique operation${digest.graphqlOps.length === 1 ? '' : 's'} merged across every session. Variable types widened over the union of every captured <code>variables</code> payload.
-              </div>
-            </div>
-            <a class="btn" href="${link('/graphql.txt')}" download>↓ Download operations.graphql</a>
-          </div>`
-        : ''}
+        ${digest.routes.length > 0
+          ? html`<div class="proj-section">
+              <h3 class="proj-sub-head">Route tree (${digest.routes.length})</h3>
+              <div class="card">${raw(renderRouteForestHtml(buildRouteForest(digest.routes)))}</div>
+            </div>`
+          : ''}
 
-      ${restEndpoints.length > 0
-        ? html`<div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
-            <div style="min-width: 0;">
-              <strong style="font-size: 13px;">Aggregated mock server</strong>
-              <div class="meta" style="font-size: 11px; margin-top: 2px;">
-                Single-file Node.js script with every endpoint ever captured across this project. <strong>Stateful replay</strong>: each route walks through the sequence of responses observed during recording, so flows like login → fetch → mutate → refetch reproduce correctly. ${digest.endpoints.reduce((n, e) => n + e.callCount, 0)} total calls fed in.
-              </div>
-            </div>
-            <a class="btn" href="${link('/api/mock')}" download>↓ Download mock server</a>
-          </div>`
-        : ''}
+        ${graphqlEndpoints.length > 0
+          ? html`<div class="proj-section">
+              <h3 class="proj-sub-head">GraphQL operations (${graphqlEndpoints.length})</h3>
+              ${graphqlEndpoints.map((e) => renderEndpoint(e, digest))}
+            </div>`
+          : ''}
 
-      <div class="section">
-        <h2>Sessions (${digest.sessions.length})</h2>
-        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-          ${digest.sessions
-            .slice()
-            .sort((a, b) => b.uploadedAt - a.uploadedAt)
-            .map((s) => isShareView
-              ? html`<span class="badge" title="${s.startedAt}">${s.id.slice(0, 8)} · ${formatAgo(s.uploadedAt)}</span>`
-              : html`<a class="badge" style="text-decoration: none;" href="/sessions/${s.id}" title="${s.startedAt}">${s.id.slice(0, 8)} · ${formatAgo(s.uploadedAt)}</a>`)}
-        </div>
-      </div>
-
-      ${digest.routes.length > 0
-        ? html`<div class="section">
-            <h2>Route tree (${digest.routes.length})</h2>
-            <div class="card">${raw(renderRouteForestHtml(buildRouteForest(digest.routes)))}</div>
-          </div>`
-        : ''}
-
-      ${graphqlEndpoints.length > 0
-        ? html`<div class="section">
-            <h2>GraphQL operations</h2>
-            ${graphqlEndpoints.map((e) => renderEndpoint(e, digest))}
-          </div>`
-        : ''}
-
-      ${restEndpoints.length > 0
-        ? html`<div class="section">
-            <h2>REST / RPC endpoints</h2>
-            ${restEndpoints.map((e) => renderEndpoint(e, digest))}
-          </div>`
-        : ''}
+        ${restEndpoints.length > 0
+          ? html`<div class="proj-section">
+              <h3 class="proj-sub-head">REST / RPC endpoints (${restEndpoints.length})</h3>
+              ${restEndpoints.map((e) => renderEndpoint(e, digest))}
+            </div>`
+          : ''}
+      </details>
 
       <style>${raw(PROJECT_CSS)}${raw(ROUTE_TREE_CSS)}</style>
     `,
   })
 }
+
+// ---- Building blocks for the grouped layout ---------------------------------
+
+interface MiniCardOpts {
+  primary?: boolean
+}
+
+// Compact menu card — title + one-liner + chevron — used inside each section.
+// Renders as an <a> so the whole tile is clickable.
+function miniCard(href: string, title: string, sub: string, opts: MiniCardOpts = {}): Renderable {
+  return html`<a class="mini-card ${opts.primary ? 'primary' : ''}" href="${href}">
+    <div class="mini-card-title">${title}</div>
+    <div class="mini-card-sub">${sub}</div>
+    <span class="mini-card-arrow">→</span>
+  </a>`
+}
+
+function miniDownload(href: string, title: string, sub: string, opts: MiniCardOpts = {}): Renderable {
+  return html`<a class="mini-card ${opts.primary ? 'primary' : ''}" href="${href}" download>
+    <div class="mini-card-title">${title}</div>
+    <div class="mini-card-sub">${sub}</div>
+    <span class="mini-card-arrow">↓</span>
+  </a>`
+}
+
+function compareCard(link: (p: string) => string, otherHosts: string[]): Renderable {
+  return html`<form class="mini-card mini-card-form" method="get" action="${link('/diff/__placeholder__')}"
+    onsubmit="event.preventDefault(); const t = this.querySelector('select').value; if (t) window.location.href = '${link('/diff/')}' + encodeURIComponent(t)">
+    <div class="mini-card-title">⇄ Compare projects</div>
+    <div class="mini-card-sub">Diff against another captured host</div>
+    <div class="mini-card-form-row">
+      <select required>
+        <option value="">— pick —</option>
+        ${otherHosts.map((h) => html`<option value="${h}">${h}</option>`)}
+      </select>
+      <button type="submit" class="btn secondary">Diff →</button>
+    </div>
+  </form>`
+}
+
+function section(title: string, subtitle: string, cards: (Renderable | null)[]): Renderable {
+  const filtered = cards.filter((c): c is Renderable => c !== null)
+  if (filtered.length === 0) return html``
+  return html`<div class="proj-section">
+    <h2 class="proj-section-head">${title} <span class="muted">${subtitle}</span></h2>
+    <div class="mini-card-grid">${filtered}</div>
+  </div>`
+}
+
+// ---- Endpoint render (unchanged from before) --------------------------------
 
 function renderEndpoint(e: EndpointEntry, digest: ProjectDigest): Renderable {
   const requestJson = e.requestSamples.map(tryParse).filter((j) => j !== null)
@@ -366,9 +266,9 @@ function renderEndpoint(e: EndpointEntry, digest: ProjectDigest): Renderable {
 }
 
 function kpi(label: string, value: number | string, color: string): Renderable {
-  return html`<div style="border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;">
-    <div style="font-size: 18px; font-weight: 600; color: ${color};">${value}</div>
-    <div class="meta" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;">${label}</div>
+  return html`<div class="kpi-tile">
+    <div class="kpi-value" style="color: ${color};">${value}</div>
+    <div class="kpi-label">${label}</div>
   </div>`
 }
 
@@ -378,14 +278,6 @@ function tryParse(s: string): unknown {
 
 function truncate(s: string, n: number): string {
   return s.length <= n ? s : s.slice(0, n) + `\n… (${s.length - n} more chars)`
-}
-
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-}
-
-function safeHost(s: string): string {
-  return s.replace(/[^A-Za-z0-9.-]/g, '-').slice(0, 60) || 'project'
 }
 
 function formatAgo(ts: number): string {
@@ -400,6 +292,64 @@ function formatAgo(ts: number): string {
 }
 
 const PROJECT_CSS = `
+.share-banner { background: color-mix(in oklab, #7c4ac2 6%, transparent); border: 1px solid color-mix(in oklab, #7c4ac2 35%, var(--border)); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
+.share-banner .meta { display: block; font-size: 11px; margin-top: 2px; }
+
+.hero { border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin-bottom: 20px; }
+.hero-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.hero-title { margin: 0; font-size: 22px; font-weight: 700; }
+.hero-sub { font-size: 12px; margin-top: 2px; }
+.hero-cta { white-space: nowrap; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.kpi-tile { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.kpi-value { font-size: 20px; font-weight: 700; }
+.kpi-label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
+
+.proj-section { margin-bottom: 22px; }
+.proj-section-head { font-size: 14px; font-weight: 600; margin: 0 0 10px; text-transform: none; letter-spacing: 0; color: var(--fg); }
+.proj-section-head .muted { font-weight: 400; font-size: 12px; margin-left: 8px; }
+.proj-sub-head { font-size: 12px; font-weight: 600; margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+
+.mini-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.mini-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 4px 8px;
+  align-items: start;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--fg);
+  background: var(--bg);
+  transition: border-color 120ms, transform 120ms;
+}
+.mini-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.mini-card.primary { border-color: var(--accent); background: color-mix(in oklab, var(--accent) 6%, transparent); }
+.mini-card.primary:hover { border-color: var(--accent); background: color-mix(in oklab, var(--accent) 10%, transparent); }
+.mini-card-title { font-weight: 600; font-size: 13px; grid-column: 1; }
+.mini-card-sub { color: var(--muted); font-size: 11px; grid-column: 1 / -1; line-height: 1.4; }
+.mini-card-arrow { color: var(--muted); font-size: 16px; grid-column: 2; grid-row: 1; }
+.mini-card.primary .mini-card-arrow { color: var(--accent); }
+.mini-card-form { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.mini-card-form-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.mini-card-form-row select { flex: 1; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; font-size: 12px; }
+.mini-card-form-row button { font-size: 12px; padding: 6px 12px; }
+
+.share-card { display: flex; flex-direction: column; gap: 6px; }
+.share-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.share-input { flex: 1; min-width: 240px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; font-family: ui-monospace, monospace; font-size: 12px; }
+.share-meta { font-size: 11px; }
+.share-create { margin: 0; }
+
+.proj-details { margin-top: 24px; }
+.proj-details summary { list-style: none; cursor: pointer; }
+.proj-details summary::-webkit-details-marker { display: none; }
+.proj-details summary::before { content: '▸ '; font-size: 11px; color: var(--muted); }
+.proj-details[open] summary::before { content: '▾ '; }
+.session-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+
 .endpoint { border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 12px; background: var(--bg); }
 .endpoint-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: baseline; margin-bottom: 8px; }
 .endpoint-id { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }

@@ -1,4 +1,4 @@
-import { html } from 'hono/html'
+import { html, raw } from 'hono/html'
 import type { SessionListItem } from '@unwrap/protocol'
 import { Layout, type Renderable } from './layout'
 import { groupSessionsByHost } from '../project-aggregate'
@@ -7,14 +7,63 @@ export function LoginPage(): Renderable {
   return Layout({
     title: 'Sign in',
     body: html`
-      <div class="empty">
-        <h2 style="font-size: 18px; margin-bottom: 8px;">Welcome to Unwrap</h2>
-        <p class="muted">Sign in with Google to view and generate Playwright specs for the sessions your extension uploads.</p>
-        <p style="margin-top: 28px;"><a class="btn" href="/auth/google/start?mode=web">Sign in with Google</a></p>
+      <div class="landing">
+        <div class="landing-hero">
+          <h1 class="landing-title">Unwrap</h1>
+          <p class="landing-tagline">Capture a browser session. Get every analysis, test, and integration artifact a service reverse-engineer or QA engineer would build by hand — without building any of them.</p>
+          <p style="margin-top: 24px;"><a class="btn" href="/auth/google/start?mode=web">Sign in with Google →</a></p>
+        </div>
+
+        <div class="landing-grid">
+          <div class="landing-card">
+            <div class="landing-card-icon">🔍</div>
+            <h3>Analyze</h3>
+            <p>Aggregated route map, API inventory with TS types, GraphQL ops, page → API dependency graph, code coverage, WebSocket inventory. Every session deepens the picture.</p>
+          </div>
+          <div class="landing-card">
+            <div class="landing-card-icon">🧪</div>
+            <h3>Test</h3>
+            <p>AI-generated Playwright specs per session. Test coverage gap analysis. Curated canonical suite exports as a runnable Playwright project drop-in for CI.</p>
+          </div>
+          <div class="landing-card">
+            <div class="landing-card-icon">🛡</div>
+            <h3>Audit</h3>
+            <p>Security findings (auth scheme matrix, secrets in URLs, mixed content). Accessibility (runtime AX tree audit). Performance (p95 latency, N+1 detection).</p>
+          </div>
+          <div class="landing-card">
+            <div class="landing-card-icon">📦</div>
+            <h3>Export</h3>
+            <p>OpenAPI 3.0. Postman v2.1. Stateful Node.js mock server. Runnable clone bundle (frontend + mock + run.sh). GraphQL operations.</p>
+          </div>
+          <div class="landing-card">
+            <div class="landing-card-icon">🔌</div>
+            <h3>Integrate</h3>
+            <p>GitHub App posts PR comments with diff vs prior captures. CLI captures from CI. Sentry correlation matches issues to the user flow that produced them.</p>
+          </div>
+          <div class="landing-card">
+            <div class="landing-card-icon">🤖</div>
+            <h3>AI</h3>
+            <p>Gemini reads screenshots + API surface + actions to write a service brief. Proposes a test plan from coverage gaps with evidence and assertions.</p>
+          </div>
+        </div>
       </div>
+
+      <style>${raw(landingCss)}</style>
     `,
   })
 }
+
+const landingCss = `
+.landing { padding: 24px 0; }
+.landing-hero { text-align: center; padding: 32px 0 48px; }
+.landing-title { font-size: 42px; font-weight: 700; margin: 0; }
+.landing-tagline { color: var(--muted); font-size: 15px; max-width: 640px; margin: 12px auto 0; line-height: 1.6; }
+.landing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 16px; }
+.landing-card { border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+.landing-card-icon { font-size: 22px; margin-bottom: 6px; }
+.landing-card h3 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+.landing-card p { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.55; }
+`
 
 export function SessionsPage({ email, sessions }: { email: string; sessions: SessionListItem[] }): Renderable {
   const projects = groupSessionsByHost(sessions.map((s) => ({ host: s.host, uploadedAt: s.uploadedAt })))
@@ -40,9 +89,31 @@ export function SessionsPage({ email, sessions }: { email: string; sessions: Ses
       </div>
       ${sessions.length === 0
         ? html`
-            <div class="empty">
-              No sessions uploaded yet. In the Unwrap extension, record a session and click
-              <strong>⤴ Upload &amp; open</strong>.
+            <div class="onboarding">
+              <h3 style="margin-top: 0; font-size: 16px;">Welcome — let's capture your first session</h3>
+              <p class="muted" style="font-size: 13px;">Two paths:</p>
+              <div class="onboarding-grid">
+                <div class="onboarding-step">
+                  <div class="onboarding-icon">🖱</div>
+                  <h4>Interactive (Chrome extension)</h4>
+                  <ol>
+                    <li>Build + load the Unwrap extension (<code>pnpm --filter @unwrap/extension build</code> → load <code>apps/extension/dist</code> as unpacked at <a href="chrome://extensions" target="_blank">chrome://extensions</a>).</li>
+                    <li>Open the side panel on any page you want to analyze.</li>
+                    <li>Click Record. Use the site normally. Click Stop. The session uploads here automatically.</li>
+                  </ol>
+                  <p class="muted" style="font-size: 11px;">Captures everything: clicks, network, DOM, screenshots, AX trees, coverage, WebSockets.</p>
+                </div>
+                <div class="onboarding-step">
+                  <div class="onboarding-icon">🤖</div>
+                  <h4>Headless (CI / scripts)</h4>
+                  <ol>
+                    <li>Mint a token at <a href="/settings/tokens">Settings → API tokens</a>.</li>
+                    <li>Run <code>npx @unwrap/cli capture --server=&lt;origin&gt; --token=&lt;token&gt; &lt;urls...&gt;</code> on your machine or in CI.</li>
+                    <li>The CLI uploads here when done.</li>
+                  </ol>
+                  <p class="muted" style="font-size: 11px;">Lighter than the extension (no clicks/DOM/AX/coverage) but enough for surface change detection. <a href="/settings/integrations">Add the GitHub App</a> for auto PR comments.</p>
+                </div>
+              </div>
             </div>
           `
         : html`<div>
@@ -75,16 +146,29 @@ export function SessionsPage({ email, sessions }: { email: string; sessions: Ses
                           ? html`<span class="badge" style="color:#d64545; border-color:#d64545;">⚠ replay error</span>`
                           : ''}
                     ${s.hasGeneratedSpec
-                      ? html`<span class="badge ok">spec</span>`
+                      ? html`<span class="badge ok" style="color:#1f9d55; border-color:#1f9d55;">spec</span>`
                       : html`<span class="badge">no spec</span>`}
                   </div>
                 </div>
               </div>
             `)}
           </div>`}
+      <style>${raw(onboardingCss)}</style>
     `,
   })
 }
+
+const onboardingCss = `
+.onboarding { border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; }
+.onboarding-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 12px; }
+.onboarding-step { padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+.onboarding-icon { font-size: 22px; margin-bottom: 6px; }
+.onboarding-step h4 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+.onboarding-step ol { margin: 0 0 8px; padding-left: 20px; font-size: 12px; line-height: 1.55; }
+.onboarding-step ol li { margin-bottom: 6px; }
+.onboarding-step code { font-size: 11px; background: rgba(127,127,127,0.1); padding: 1px 5px; border-radius: 4px; }
+.onboarding-step p { margin: 6px 0 0; }
+`
 
 function regressionColor(l: 'pass' | 'minor' | 'fail'): string {
   return l === 'pass' ? '#1f9d55' : l === 'minor' ? '#b88300' : '#d64545'
