@@ -11,6 +11,8 @@ import { TabRecorder } from './recorder'
 import { exportSessionAsHar, exportSessionAsJson, exportSessionAsPlaywright } from './export'
 import { captureStorageState } from './storage-state'
 import { uploadSessionToServer } from './llm'
+import { getActiveVideoSession, startVideoRecording, stopVideoRecording, type StopResult } from './video'
+import { putBlob } from '@/shared/storage'
 import { authIsValid, getSettings, setSettings } from '@/shared/settings'
 
 const recorders = new Map<number, TabRecorder>()
@@ -45,6 +47,15 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   const sessionId = rec.sessionId
   void rec.stop().finally(async () => {
     recorders.delete(tabId)
+    const activeVideo = getActiveVideoSession()
+    if (activeVideo && activeVideo.sessionId === sessionId) {
+      try {
+        const result = await stopVideoRecording()
+        await persistVideo(sessionId, result)
+      } catch (e) {
+        console.warn('[unwrap] video stop on tab close failed', e)
+      }
+    }
     await markStopped(sessionId)
     void autoUpload(sessionId, { openTab: false })
   })
@@ -80,8 +91,8 @@ async function handle(msg: RuntimeMessage, sender: chrome.runtime.MessageSender)
     case 'content_storage_state': {
       const meta = await getSession(msg.sessionId)
       if (!meta) return
-      await appendEvent({
-        type: 'storage_state',
+      const storageEvent = {
+        type: 'storage_state' as const,
         sessionId: msg.sessionId,
         ts: Date.now(),
         origin: msg.origin,
@@ -89,9 +100,13 @@ async function handle(msg: RuntimeMessage, sender: chrome.runtime.MessageSender)
         localStorage: msg.local,
         sessionStorage: msg.session,
         trigger: msg.trigger,
-      })
+      }
+      await appendEvent(storageEvent)
       const recorder = findRecorder(msg.sessionId)
-      if (recorder) await recorder.bumpCounts({ storageStates: 1 })
+      if (recorder) {
+        await recorder.bumpCounts({ storageStates: 1 })
+        recorder.notifyStorageStateCaptured(storageEvent)
+      }
       return
     }
     case 'is_recording': {
@@ -173,6 +188,12 @@ async function startSession(tabId: number): Promise<SessionMeta> {
     await putSession(meta)
     throw e
   }
+  // Fire-and-forget video recording — non-fatal if it fails (chrome://
+  // pages, PDF viewer, etc.). We just log and let the rest of the
+  // session capture proceed without video.
+  void startVideoRecording(sessionId, tabId).catch((e) => {
+    console.warn('[unwrap] video recording could not start', e)
+  })
   return meta
 }
 
@@ -187,11 +208,41 @@ async function stopSession(
       break
     }
   }
+  // Tear down the video recorder for THIS session. Skip if the offscreen
+  // captured a different session (multi-tab; shouldn't happen with our
+  // current 1-active-recording invariant, but defensive).
+  const activeVideo = getActiveVideoSession()
+  if (activeVideo && activeVideo.sessionId === sessionId) {
+    try {
+      const result = await stopVideoRecording()
+      await persistVideo(sessionId, result)
+    } catch (e) {
+      console.warn('[unwrap] video stop/persist failed', e)
+    }
+  }
   const meta = await markStopped(sessionId)
   if (opts.autoUpload) {
     void autoUpload(sessionId, { openTab: true })
   }
   return meta
+}
+
+async function persistVideo(sessionId: string, result: StopResult): Promise<void> {
+  if (!result.base64 || !result.mimeType) return
+  const bytes = Uint8Array.from(atob(result.base64), (c) => c.charCodeAt(0))
+  const blob = new Blob([bytes], { type: result.mimeType })
+  // Store under a deterministic ref so the uploader can find it without
+  // walking events. Cleaned up alongside the session record on delete.
+  await putBlob(`video-${sessionId}`, sessionId, result.mimeType, blob)
+  const meta = await getSession(sessionId)
+  if (!meta) return
+  meta.video = {
+    ref: `video-${sessionId}`,
+    mimeType: result.mimeType,
+    sizeBytes: result.sizeBytes ?? blob.size,
+    durationMs: result.durationMs ?? 0,
+  }
+  await putSession(meta)
 }
 
 async function markStopped(sessionId: string): Promise<SessionMeta | undefined> {

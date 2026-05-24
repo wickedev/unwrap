@@ -26,10 +26,12 @@ import {
   findPreviousSession,
   getScreenshot,
   getSession as getStoredSession,
+  getSessionVideo,
   listSessions,
   newSessionId,
   putScreenshot,
   putSession,
+  putSessionVideo,
   setGenerated,
 } from './storage/sessions'
 import { LoginPage, SessionsPage } from './pages/home'
@@ -503,6 +505,54 @@ app.get('/api/sessions/:id/screenshots/:ref', async (c) => {
     headers: {
       'content-type': 'image/png',
       'cache-control': 'private, max-age=86400',
+    },
+  })
+})
+
+// Tab-capture video upload. The extension POSTs raw bytes here right
+// after the JSON session upload succeeds. We cap at 20 MB so a single
+// KV value (limit 25 MB) has headroom for metadata overhead. The
+// extension's MediaRecorder is configured at 800 kbps which gives
+// ~5 minutes of headroom against that cap.
+const VIDEO_MAX_BYTES = 20 * 1024 * 1024
+
+app.post('/api/sessions/:id/video', async (c) => {
+  const id = c.req.param('id')
+  const email = c.get('email')
+  const record = await getStoredSession(c.env, email, id)
+  if (!record) return c.json(err('Not found'), 404)
+  const mimeType = c.req.header('content-type') ?? 'video/webm'
+  if (!mimeType.startsWith('video/')) return c.json(err('Body must be a video/* content-type'), 400)
+  const buf = await c.req.arrayBuffer()
+  if (buf.byteLength === 0) return c.json(err('Empty video body'), 400)
+  if (buf.byteLength > VIDEO_MAX_BYTES) return c.json(err(`Video exceeds ${VIDEO_MAX_BYTES} bytes`), 413)
+  await putSessionVideo(c.env, email, id, buf, mimeType)
+  const durationHeader = c.req.header('x-unwrap-duration-ms')
+  const durationMs = durationHeader ? Number(durationHeader) : 0
+  record.video = {
+    mimeType,
+    sizeBytes: buf.byteLength,
+    durationMs: Number.isFinite(durationMs) ? durationMs : 0,
+    uploadedAt: Date.now(),
+  }
+  await putSession(c.env, record)
+  return c.json({ ok: true, sizeBytes: buf.byteLength })
+})
+
+app.get('/api/sessions/:id/video', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.json(err('Not signed in'), 401)
+  const id = c.req.param('id')
+  const record = await getStoredSession(c.env, email, id)
+  if (!record || !record.video) return c.json(err('Not found'), 404)
+  const blob = await getSessionVideo(c.env, email, id)
+  if (!blob) return c.json(err('Video expired'), 404)
+  return new Response(blob.bytes as BodyInit, {
+    headers: {
+      'content-type': blob.mimeType,
+      'content-length': String(blob.bytes.byteLength),
+      'cache-control': 'private, max-age=86400',
+      'accept-ranges': 'none',
     },
   })
 })

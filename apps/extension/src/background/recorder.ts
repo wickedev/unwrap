@@ -7,6 +7,7 @@ import type {
   ResponseEvent,
   ScreenshotEvent,
   SessionMeta,
+  StorageStateEvent,
   WebSocketClosedEvent,
   WebSocketCreatedEvent,
   WebSocketFrameEvent,
@@ -22,6 +23,25 @@ const SNAPSHOT_DELAY_MS = 1500
 const STORAGE_STATE_DELAY_MS = 250
 const MAX_CONSOLE_ARG_LEN = 4_000
 const MAX_WS_PAYLOAD_LEN = 64_000
+// How long the network has to be quiet before we treat a navigation as
+// "settled" and take the post-load screenshot. Longer = waits out late
+// XHRs but risks missing flash-of-unstyled content; tuned to match
+// Playwright's `networkidle` (~500ms idle).
+const NETWORK_IDLE_MS = 600
+// Hard cap on how long we'll wait for idle before screenshotting anyway,
+// so a chatty page (analytics heartbeats, websockets) doesn't starve the
+// capture entirely.
+const NETWORK_IDLE_TIMEOUT_MS = 4_000
+// When the recorder sees a logged-in session (auth cookie or token in
+// storage), it tacks on this extra wait after idle to give post-auth
+// dashboards their async render pass. Tuned conservatively — undershoots
+// hurt screenshot quality more than the extra second hurts capture UX.
+const LOGGED_IN_EXTRA_WAIT_MS = 1_200
+// Heuristic patterns for "this storage state belongs to a logged-in
+// user." Hit any cookie name OR localStorage key and we flag the session
+// as authenticated. Intentionally loose — false positives cost us 1.2s,
+// false negatives cost us a blurry screenshot.
+const AUTH_KEY_PATTERN = /(session|auth|token|csrf|jwt|bearer|sid|access)/i
 
 type RequestRecord = {
   requestId: string
@@ -38,6 +58,15 @@ export class TabRecorder {
   private pendingRequests = new Map<string, RequestRecord>()
   private coverage: CoverageTracker
   private snapshotTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  // Reason → most recent screenshot debouncer. Multiple URL changes
+  // landing in quick succession (SPA pushState bursts) collapse into a
+  // single trailing capture per URL instead of N redundant shots.
+  private screenshotDebouncers = new Map<string, ReturnType<typeof setTimeout>>()
+  // Inflight request count powers the network-idle wait. Incremented
+  // on requestWillBeSent, decremented on loadingFinished / loadingFailed.
+  private inflightCount = 0
+  private lastUrlScreenshotted = ''
+  private loggedIn = false
 
   constructor(sessionId: string, tabId: number) {
     this.sessionId = sessionId
@@ -102,6 +131,75 @@ export class TabRecorder {
     }, STORAGE_STATE_DELAY_MS)
   }
 
+  // Called from the background message handler whenever a storage state
+  // event lands. Updates the logged-in heuristic so the next post-load
+  // screenshot uses the right wait budget.
+  notifyStorageStateCaptured(event: StorageStateEvent): void {
+    this.loggedIn = detectLoggedIn(event)
+  }
+
+  // Schedules a post-load screenshot for `url`, debounced so SPA route
+  // bursts only fire once per destination. Waits for network idle (with
+  // a hard ceiling) before snapping, and tacks on extra time when the
+  // session looks logged-in so authenticated dashboards finish their
+  // async render.
+  private scheduleScreenshotAfterLoad(reason: ScreenshotEvent['reason'], url: string, debounceMs = 50): void {
+    if (!this.attached) return
+    const key = `screenshot:${url}`
+    const existing = this.screenshotDebouncers.get(key)
+    if (existing) clearTimeout(existing)
+    const t = setTimeout(async () => {
+      this.screenshotDebouncers.delete(key)
+      if (!this.attached) return
+      // Skip redundant captures on identical URLs (rapid double-fires
+      // from onCommitted + an onHistoryStateUpdated to the same URL).
+      if (url === this.lastUrlScreenshotted) {
+        const since = Date.now() - (this.lastScreenshotAt ?? 0)
+        if (since < 300) return
+      }
+      try {
+        await this.waitForNetworkIdle(NETWORK_IDLE_MS, NETWORK_IDLE_TIMEOUT_MS)
+        if (this.loggedIn) await sleep(LOGGED_IN_EXTRA_WAIT_MS)
+        this.lastUrlScreenshotted = url
+        this.lastScreenshotAt = Date.now()
+        await this.captureScreenshot(reason, true)
+      } catch (e) {
+        console.debug('[unwrap] post-load screenshot failed', e)
+      }
+    }, debounceMs)
+    this.screenshotDebouncers.set(key, t)
+  }
+
+  // Resolves once the inflight network request count has been zero for
+  // `idleMs` consecutive ms, or after `timeoutMs`. Hard timeout always
+  // wins so a long-polling page can't block the capture indefinitely.
+  private waitForNetworkIdle(idleMs: number, timeoutMs: number): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const start = Date.now()
+      const tick = () => {
+        if (!this.attached) return resolve()
+        if (this.inflightCount === 0) return resolve()
+        if (Date.now() - start >= timeoutMs) return resolve()
+        setTimeout(tick, 100)
+      }
+      // Brief grace period before first check — gives the navigation a
+      // chance to register its first request, so we don't fire immediately
+      // on a transient zero.
+      setTimeout(() => {
+        if (this.inflightCount === 0) {
+          setTimeout(() => {
+            if (this.inflightCount === 0) resolve()
+            else tick()
+          }, idleMs)
+        } else {
+          tick()
+        }
+      }, 100)
+    })
+  }
+
+  private lastScreenshotAt = 0
+
   private scheduleSnapshot(key: string): void {
     const existing = this.snapshotTimers.get(key)
     if (existing) clearTimeout(existing)
@@ -148,7 +246,10 @@ export class TabRecorder {
     void appendEvent(event)
     void this.bumpCounts({ navigations: 1 })
     if (details.frameId === 0) {
-      void this.captureScreenshot('navigation', true)
+      // Deferred screenshot — wait for the page's network + render to
+      // settle before snapping. The session_start screenshot at start()
+      // captures the pre-nav state; this one captures the destination.
+      this.scheduleScreenshotAfterLoad('navigation', details.url)
       this.scheduleStorageStateCapture('navigation')
       this.scheduleSnapshot(`nav-${details.url}`)
       void this.notifyContentScript('recording_started')
@@ -169,6 +270,11 @@ export class TabRecorder {
     void appendEvent(event)
     void this.bumpCounts({ navigations: 1 })
     if (details.frameId === 0) {
+      // SPA route change — no onCommitted fires, so we own both the
+      // snapshot AND the screenshot here. Same network-idle + login-aware
+      // wait pipeline as a hard navigation.
+      this.scheduleScreenshotAfterLoad('navigation', details.url)
+      this.scheduleStorageStateCapture('navigation')
       this.scheduleSnapshot(`hist-${details.url}`)
     }
   }
@@ -221,6 +327,7 @@ export class TabRecorder {
       method: req.method,
       resourceType: params.type,
     })
+    this.inflightCount++
     const event: RequestEvent = {
       type: 'request',
       sessionId: this.sessionId,
@@ -263,6 +370,7 @@ export class TabRecorder {
     const rec = this.pendingRequests.get(params.requestId)
     if (!rec) return
     this.pendingRequests.delete(params.requestId)
+    this.decrementInflight()
 
     const mimeType = rec.mimeType ?? ''
     if (!shouldCaptureResponseBody(mimeType, params.encodedDataLength)) return
@@ -303,7 +411,10 @@ export class TabRecorder {
   }
 
   private handleLoadingFailed(params: Cdp.LoadingFailed): void {
-    this.pendingRequests.delete(params.requestId)
+    if (this.pendingRequests.has(params.requestId)) {
+      this.pendingRequests.delete(params.requestId)
+      this.decrementInflight()
+    }
     const event: RequestFailedEvent = {
       type: 'request_failed',
       sessionId: this.sessionId,
@@ -474,6 +585,25 @@ export class TabRecorder {
     meta.endedAt = Date.now()
     await putSession(meta)
   }
+
+  private decrementInflight(): void {
+    if (this.inflightCount > 0) this.inflightCount--
+  }
+}
+
+// Heuristic — a storage state "looks logged in" if a cookie name or
+// localStorage key matches the auth pattern. Intentionally loose to
+// minimize false negatives; cost of a false positive is just an extra
+// ~1.2s wait before the next screenshot.
+function detectLoggedIn(event: StorageStateEvent): boolean {
+  for (const c of event.cookies) if (AUTH_KEY_PATTERN.test(c.name)) return true
+  for (const k of Object.keys(event.localStorage)) if (AUTH_KEY_PATTERN.test(k)) return true
+  for (const k of Object.keys(event.sessionStorage)) if (AUTH_KEY_PATTERN.test(k)) return true
+  return false
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms))
 }
 
 function stringifyConsoleArg(arg: Cdp.RemoteObject): string {

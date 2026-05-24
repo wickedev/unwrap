@@ -74,6 +74,37 @@ export async function putScreenshot(
   })
 }
 
+// Per-session video. Single blob (not per-segment) — the offscreen
+// recorder assembles the full webm before upload. KV value-size cap is
+// 25 MB; the uploader is configured to stay well under that.
+const VIDEO_TTL_SECONDS = 30 * 24 * 60 * 60
+const VIDEO_KEY = (email: string, sessionId: string) => `video:${email}:${sessionId}`
+
+export async function putSessionVideo(
+  env: Env,
+  email: string,
+  sessionId: string,
+  bytes: ArrayBuffer,
+  mimeType: string,
+): Promise<void> {
+  if (!env.SESSIONS) throw new Error('SESSIONS KV namespace not configured')
+  await env.SESSIONS.put(VIDEO_KEY(email, sessionId), bytes, {
+    expirationTtl: VIDEO_TTL_SECONDS,
+    metadata: { mimeType },
+  })
+}
+
+export async function getSessionVideo(
+  env: Env,
+  email: string,
+  sessionId: string,
+): Promise<{ bytes: ArrayBuffer; mimeType: string } | null> {
+  if (!env.SESSIONS) return null
+  const result = await env.SESSIONS.getWithMetadata<{ mimeType?: string }>(VIDEO_KEY(email, sessionId), 'arrayBuffer')
+  if (!result.value) return null
+  return { bytes: result.value, mimeType: result.metadata?.mimeType ?? 'video/webm' }
+}
+
 export async function getScreenshot(
   env: Env,
   email: string,

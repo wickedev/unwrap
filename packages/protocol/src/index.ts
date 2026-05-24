@@ -323,6 +323,15 @@ export interface StoredSession {
   // Compact diff against the previous session of the same host, computed
   // at upload time and surfaced as a regression badge on the sessions list.
   regression?: RegressionSummary
+  // Tab-capture video uploaded alongside the session. Bytes live in a
+  // separate KV blob (key `video:<email>:<sessionId>`); this metadata
+  // is what the session detail page reads to render the <video> tag.
+  video?: {
+    mimeType: string
+    sizeBytes: number
+    durationMs: number
+    uploadedAt: number
+  }
 }
 
 export type RegressionLevel = 'pass' | 'minor' | 'fail'

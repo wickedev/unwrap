@@ -1,5 +1,5 @@
 import type { ErrorResponse, UploadSessionRequest, UploadSessionResponse } from '@unwrap/protocol'
-import { getSession, listEvents } from '@/shared/storage'
+import { getSession, listBlobs, listEvents } from '@/shared/storage'
 import { authedFetch } from './auth'
 import { generatePlaywrightScript } from './playwright'
 import { pickScreenshotsForLlm, pickScreenshotsForVerify } from './screenshots'
@@ -63,5 +63,27 @@ export async function uploadSessionToServer(sessionId: string): Promise<UploadRe
   }
 
   const result = (await resp.json()) as UploadSessionResponse
+
+  // Ship the captured tab video as a separate raw-bytes POST so the
+  // primary upload payload stays small. Best-effort — a video failure
+  // doesn't fail the session upload.
+  if (meta.video) {
+    try {
+      const blobs = await listBlobs(sessionId)
+      const videoBlob = blobs.find((b) => b.ref === meta.video!.ref)
+      if (videoBlob) {
+        await authedFetch(`/api/sessions/${encodeURIComponent(result.id)}/video`, {
+          method: 'POST',
+          headers: {
+            'content-type': meta.video.mimeType,
+            'x-unwrap-duration-ms': String(meta.video.durationMs),
+          },
+          body: videoBlob.data,
+        })
+      }
+    } catch (e) {
+      console.warn('[unwrap] video upload failed', e)
+    }
+  }
   return result
 }

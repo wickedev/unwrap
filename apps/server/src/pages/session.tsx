@@ -48,6 +48,25 @@ export function SessionDetailPage({
         </Card>
       )}
 
+      {session.video && (
+        <Section title="Tab recording">
+          <Card>
+            <CardContent className="p-4">
+              <video
+                controls
+                preload="metadata"
+                src={`/api/sessions/${session.id}/video`}
+                className="w-full rounded-md border bg-black"
+                style={{ maxHeight: '60vh' }}
+              />
+              <div className="text-xs text-muted-foreground mt-2">
+                {session.video.mimeType} · {formatBytes(session.video.sizeBytes)}{session.video.durationMs > 0 ? ` · ${formatDuration(session.video.durationMs)}` : ''}
+              </div>
+            </CardContent>
+          </Card>
+        </Section>
+      )}
+
       <Section title="Capture summary">
         <Card>
           <CardContent className="p-4">
@@ -345,6 +364,11 @@ function formatDuration(ms: number) {
   if (sec < 60) return `${sec}s`
   const min = Math.floor(sec / 60)
   return `${min}m ${sec % 60}s`
+}
+function formatBytes(n: number) {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`
 }
 function relativeTime(ts: number) {
   const diff = Date.now() - ts

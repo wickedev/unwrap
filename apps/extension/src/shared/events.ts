@@ -28,6 +28,15 @@ export interface SessionMeta {
     axTrees: number
   }
   upload?: UploadStatus
+  // Present when the offscreen tabCapture recorder produced a video
+  // blob for this session. Bytes live in IndexedDB under `ref`; this
+  // metadata is what the uploader consults when bundling for the server.
+  video?: {
+    ref: string
+    mimeType: string
+    sizeBytes: number
+    durationMs: number
+  }
 }
 
 export type UploadStatus =

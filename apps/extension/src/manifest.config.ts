@@ -18,6 +18,11 @@ export default defineManifest({
     'cookies',
     'downloads',
     'identity',
+    // Used by the offscreen video recorder — captures the active tab's
+    // video stream into a MediaRecorder running inside the offscreen
+    // document. Service workers can't host MediaRecorder directly.
+    'tabCapture',
+    'offscreen',
   ],
   host_permissions: ['<all_urls>'],
   background: {
