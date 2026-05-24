@@ -1,9 +1,9 @@
 import type { SessionListItem } from '@unwrap/protocol'
 import { Layout } from './_layout'
 import { groupSessionsByHost } from '../project-aggregate'
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
-import { Badge } from '../components/ui/badge'
-import { Button } from '../components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@unwrap/ui'
+import { Badge } from '@unwrap/ui'
+import { Button } from '@unwrap/ui'
 
 export function LoginPage() {
   const features: { icon: string; title: string; body: string }[] = [

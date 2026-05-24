@@ -1,14 +1,14 @@
 import { Layout } from './_layout'
-import { Card, CardContent } from '../components/ui/card'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
-import { cn } from '../components/lib/cn'
+import { Card, CardContent } from '@unwrap/ui'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@unwrap/ui'
+import { cn } from '@unwrap/ui'
 import type { TestRun } from '../storage/test-runs'
 import type { ProjectTestStability, SpecStability } from '../test-run-analysis'
 
 const STATUS_PILL: Record<string, string> = {
-  stable: 'bg-[hsl(var(--success))]/20 text-[hsl(var(--success))]',
-  flaky: 'bg-[hsl(var(--warning))]/20 text-[hsl(var(--warning))]',
-  failing: 'bg-[hsl(var(--danger))]/20 text-[hsl(var(--danger))]',
+  stable: 'bg-success/20 text-success',
+  flaky: 'bg-warning/20 text-warning',
+  failing: 'bg-danger/20 text-danger',
   unknown: 'bg-muted text-muted-foreground',
 }
 
@@ -39,10 +39,10 @@ export function TestRunsPage({ email, host, runs, stability, ingestPath }: { ema
           <>
             <Card className="mb-4">
               <CardContent className="p-4 grid gap-2 grid-cols-[repeat(auto-fit,minmax(150px,1fr))]">
-                <Kpi label="Total runs" value={stability.totalRuns} color="text-[hsl(var(--primary))]" />
-                <Kpi label="Stable specs" value={stability.stableCount} color="text-[hsl(var(--success))]" />
-                <Kpi label="Flaky specs" value={stability.flakyCount} color={stability.flakyCount > 0 ? 'text-[hsl(var(--warning))]' : 'text-muted-foreground'} />
-                <Kpi label="Failing specs" value={stability.consistentlyFailingCount} color={stability.consistentlyFailingCount > 0 ? 'text-[hsl(var(--danger))]' : 'text-muted-foreground'} />
+                <Kpi label="Total runs" value={stability.totalRuns} color="text-primary" />
+                <Kpi label="Stable specs" value={stability.stableCount} color="text-success" />
+                <Kpi label="Flaky specs" value={stability.flakyCount} color={stability.flakyCount > 0 ? 'text-warning' : 'text-muted-foreground'} />
+                <Kpi label="Failing specs" value={stability.consistentlyFailingCount} color={stability.consistentlyFailingCount > 0 ? 'text-danger' : 'text-muted-foreground'} />
               </CardContent>
             </Card>
 
@@ -100,8 +100,8 @@ function Kpi({ label, value, color }: { label: string; value: number | string; c
 }
 
 function StabilityRow({ s }: { s: SpecStability }) {
-  const bgClass = s.status === 'failing' ? 'bg-[hsl(var(--danger))]/5' : s.status === 'flaky' ? 'bg-[hsl(var(--warning))]/5' : ''
-  const rateColor = s.passRate >= 0.9 ? 'text-[hsl(var(--success))]' : s.passRate >= 0.5 ? 'text-[hsl(var(--warning))]' : 'text-[hsl(var(--danger))]'
+  const bgClass = s.status === 'failing' ? 'bg-danger/5' : s.status === 'flaky' ? 'bg-warning/5' : ''
+  const rateColor = s.passRate >= 0.9 ? 'text-success' : s.passRate >= 0.5 ? 'text-warning' : 'text-danger'
   return (
     <TableRow className={bgClass}>
       <TableCell><code title={s.file}>{s.title}</code><div className="text-[10px] text-muted-foreground mt-0.5">{s.file}</div></TableCell>
@@ -130,9 +130,9 @@ function RunRow({ r, host }: { r: TestRun; host: string }) {
         {r.ci?.prNumber && <>PR #{r.ci.prNumber}{' '}</>}
         {r.ci?.runUrl && <a href={r.ci.runUrl} target="_blank" rel="noopener" className="text-primary">↗</a>}
       </TableCell>
-      <TableCell className={cn('text-right', r.totals.passed > 0 ? 'text-[hsl(var(--success))]' : 'text-muted-foreground')}>{r.totals.passed}</TableCell>
-      <TableCell className={cn('text-right', r.totals.failed > 0 ? 'text-[hsl(var(--danger))] font-semibold' : 'text-muted-foreground')}>{r.totals.failed}</TableCell>
-      <TableCell className={cn('text-right', r.totals.flaky > 0 ? 'text-[hsl(var(--warning))]' : 'text-muted-foreground')}>{r.totals.flaky}</TableCell>
+      <TableCell className={cn('text-right', r.totals.passed > 0 ? 'text-success' : 'text-muted-foreground')}>{r.totals.passed}</TableCell>
+      <TableCell className={cn('text-right', r.totals.failed > 0 ? 'text-danger font-semibold' : 'text-muted-foreground')}>{r.totals.failed}</TableCell>
+      <TableCell className={cn('text-right', r.totals.flaky > 0 ? 'text-warning' : 'text-muted-foreground')}>{r.totals.flaky}</TableCell>
       <TableCell className="text-right text-xs text-muted-foreground">{formatDuration(r.totals.durationMs)}</TableCell>
     </TableRow>
   )

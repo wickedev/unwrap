@@ -42,7 +42,7 @@ import { generateMockServer } from './mock-export'
 import { buildStaticMirrorZip } from './static-mirror'
 import { extractGraphqlOperations } from './graphql-extract'
 import { aggregateProject } from './project-aggregate'
-import { ProjectPage } from './pages/project'
+import { ProjectPage, type ProjectTab } from './pages/project'
 import { buildCloneBundle } from './clone-bundle'
 import { buildOpenApiFromProject, buildOpenApiFromSession } from './openapi-export'
 import { buildPostmanFromProject, buildPostmanFromSession } from './postman-export'
@@ -760,12 +760,56 @@ app.get('/projects/:host', async (c) => {
   const digest = aggregateProject(host, sessions)
   const items = await listSessions(c.env, email)
   const otherHosts = [...new Set(items.map((s) => s.host).filter((h) => h && h !== host))].sort()
-  const existingToken = await readShareToken(c.env, email, host)
-  const shareUrl = existingToken
-    ? { url: `${originOf(c.req.url)}/share/${existingToken}`, createdAt: 0 }
+  const activeTab = parseProjectTab(c.req.query('tab'))
+  // Load tab-specific data only when needed — Monitor + Settings each
+  // need a couple of KV reads, no point spending them on Overview.
+  const [shareToken, monitorData, integrationsData] = await Promise.all([
+    readShareToken(c.env, email, host),
+    activeTab === 'monitor' ? loadMonitorPayload(c.env, email, host) : Promise.resolve(undefined),
+    activeTab === 'settings' ? loadIntegrationsPayload(c.env, email, host) : Promise.resolve(undefined),
+  ])
+  const shareUrl = shareToken
+    ? { url: `${originOf(c.req.url)}/share/${shareToken}`, createdAt: 0 }
     : null
-  return ssr(<ProjectPage email={email} digest={digest} otherHosts={otherHosts} shareUrl={shareUrl} />, { title: `Project · ${digest.host}` })
+  return ssr(
+    <ProjectPage
+      email={email}
+      digest={digest}
+      otherHosts={otherHosts}
+      shareUrl={shareUrl}
+      activeTab={activeTab}
+      {...(monitorData ? { monitor: monitorData } : {})}
+      {...(integrationsData ? { integrations: integrationsData } : {})}
+    />,
+    { title: `Project · ${digest.host}` },
+  )
 })
+
+function parseProjectTab(raw: string | undefined): ProjectTab {
+  switch (raw) {
+    case 'tests': case 'monitor': case 'insights': case 'settings': return raw
+    default: return 'overview'
+  }
+}
+
+async function loadMonitorPayload(env: Env, email: string, host: string) {
+  const [config, runs, slack] = await Promise.all([
+    getMonitorConfig(env, email, host),
+    listMonitorRuns(env, email, host),
+    getSlackConfig(env, email, host),
+  ])
+  return { config, runs, slackConfigured: !!slack }
+}
+
+async function loadIntegrationsPayload(env: Env, email: string, host: string) {
+  const [linear, slack, sentry, repo] = await Promise.all([
+    getLinearConfig(env, email, host),
+    getSlackConfig(env, email, host),
+    getSentryConfig(env, email, host),
+    getProjectRepoBinding(env, email, host),
+  ])
+  return { linear, slack, sentry, repo }
+}
 
 // ---------- Share links ----------
 
@@ -800,7 +844,11 @@ app.get('/share/:token', async (c) => {
   const sessions = await loadProjectSessions(c.env, r.email, r.host)
   if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const digest = aggregateProject(r.host, sessions)
-  return ssr(<ProjectPage email="" digest={digest} share={{ token: c.req.param('token') }} />, { title: `Project · ${digest.host}` })
+  const activeTab = parseProjectTab(c.req.query('tab'))
+  return ssr(
+    <ProjectPage email="" digest={digest} share={{ token: c.req.param('token') }} activeTab={activeTab} />,
+    { title: `Project · ${digest.host}` },
+  )
 })
 
 app.get('/share/:token/graph', async (c) => {

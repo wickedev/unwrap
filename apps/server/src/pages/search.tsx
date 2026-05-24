@@ -1,7 +1,7 @@
 import { Layout } from './_layout'
-import { Card } from '../components/ui/card'
-import { Button } from '../components/ui/button'
-import { cn } from '../components/lib/cn'
+import { Card } from '@unwrap/ui'
+import { Button } from '@unwrap/ui'
+import { cn } from '@unwrap/ui'
 import type { SearchResult, SearchResultKind } from '../search'
 
 const KIND_LABEL: Record<SearchResultKind, string> = {

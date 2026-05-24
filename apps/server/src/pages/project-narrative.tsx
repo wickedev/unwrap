@@ -1,5 +1,5 @@
 import { Layout } from './_layout'
-import { Button } from '../components/ui/button'
+import { Button } from '@unwrap/ui'
 import type { ProjectNarrative } from '../project-narrative'
 
 export function ProjectNarrativePage({ email, host, narrative, error }: {
@@ -12,7 +12,7 @@ export function ProjectNarrativePage({ email, host, narrative, error }: {
     <Layout email={email}>
       <p className="m-0 mb-3"><a href={`/projects/${encodeURIComponent(host)}`} className="text-primary text-sm">← back to {host}</a></p>
 
-      {error && <div className="rounded-md border border-[hsl(var(--danger))]/40 bg-[hsl(var(--danger))]/5 p-3 text-sm text-[hsl(var(--danger))] mb-3">{error}</div>}
+      {error && <div className="rounded-md border border-danger/40 bg-danger/5 p-3 text-sm text-danger mb-3">{error}</div>}
 
       {narrative
         ? (

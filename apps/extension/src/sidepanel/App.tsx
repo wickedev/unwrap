@@ -28,15 +28,8 @@ import {
 import type { RuntimeMessage, SessionMeta } from '@/shared/events'
 import { authIsValid, type UnwrapSettings } from '@/shared/settings'
 import { signInWithGoogleFromPanel, signOutFromPanel } from './auth'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
+import { Button, Card, CardContent, CardHeader, CardTitle, Badge, Input, Label, Separator, Stat, cn } from '@unwrap/ui'
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible'
-import { Stat } from '@/components/ui/stat'
-import { cn } from '@/lib/utils'
 
 async function send<T>(msg: RuntimeMessage): Promise<T> {
   const res = (await chrome.runtime.sendMessage(msg)) as { ok: boolean; result?: T; error?: string }
@@ -138,16 +131,16 @@ export function App(): React.JSX.Element {
   const aiReady = !!settings && !!settings.serverUrl && authIsValid(settings.auth)
 
   return (
-    <div className="flex h-full flex-col bg-[var(--color-background)] text-[var(--color-foreground)]">
-      <header className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-3 py-2.5">
+    <div className="flex h-full flex-col bg-background text-foreground">
+      <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
-          <div className="grid size-7 place-items-center rounded-md bg-[var(--color-primary)] text-[var(--color-primary-foreground)]">
+          <div className="grid size-7 place-items-center rounded-md bg-primary text-primary-foreground">
             <Zap className="size-4" />
           </div>
           <div className="min-w-0">
             <div className="text-sm font-semibold leading-tight">Unwrap</div>
             <div
-              className="truncate text-[11px] text-[var(--color-muted-foreground)]"
+              className="truncate text-[11px] text-muted-foreground"
               title={activeTab?.url ?? ''}
             >
               {activeTab?.url ?? 'No active tab'}
@@ -185,7 +178,7 @@ export function App(): React.JSX.Element {
         </CollapsibleContent>
       </Collapsible>
 
-      <div className="flex items-center gap-2 border-b border-[var(--color-border)] px-3 py-2.5">
+      <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
         {activeSession ? (
           <Button
             variant="destructive"
@@ -239,7 +232,7 @@ export function App(): React.JSX.Element {
       </div>
 
       {error && (
-        <div className="flex items-start gap-2 border-b border-[color-mix(in_oklab,var(--color-destructive)_30%,var(--color-border))] bg-[color-mix(in_oklab,var(--color-destructive)_8%,transparent)] px-3 py-2 text-xs text-[var(--color-destructive)]">
+        <div className="flex items-start gap-2 border-b border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
           <span className="flex-1 break-words">{error}</span>
           <button onClick={() => setError(null)} className="opacity-70 hover:opacity-100" aria-label="Dismiss">
@@ -250,7 +243,7 @@ export function App(): React.JSX.Element {
 
       <div className="scrollbar-thin flex-1 overflow-y-auto p-3">
         {sessions.length === 0 ? (
-          <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 text-center text-[var(--color-muted-foreground)]">
+          <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
             <Layers className="size-8 opacity-50" />
             <div className="text-xs">No sessions yet.</div>
             <div className="text-[11px] opacity-80">Click <strong>Start recording</strong> to capture this tab.</div>
@@ -301,7 +294,7 @@ function SettingsPanel({ settings, busy, onChange, onSignIn, onSignOut }: Settin
   const dirty = draftUrl.trim() !== settings.serverUrl
 
   return (
-    <div className="flex flex-col gap-3 bg-[var(--color-muted)] px-3 py-3">
+    <div className="flex flex-col gap-3 bg-muted px-3 py-3">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="server-url">Server URL</Label>
         <div className="flex items-center gap-1.5">
@@ -332,17 +325,17 @@ function SettingsPanel({ settings, busy, onChange, onSignIn, onSignOut }: Settin
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-2.5 py-2">
+      <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-background px-2.5 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <div className={cn(
             'size-1.5 rounded-full',
-            signedIn ? 'bg-[var(--color-success)]' : 'bg-[var(--color-muted-foreground)]',
+            signedIn ? 'bg-success' : 'bg-muted-foreground',
           )} />
           <div className="min-w-0">
             <div className="truncate text-xs font-medium">
               {signedIn ? settings.auth!.email : 'Signed out'}
             </div>
-            <div className="text-[10px] text-[var(--color-muted-foreground)]">
+            <div className="text-[10px] text-muted-foreground">
               {signedIn ? 'Authenticated via Google' : 'Sign in to enable AI generation'}
             </div>
           </div>
@@ -395,7 +388,7 @@ function SessionCard({
       <CardHeader>
         <div className="min-w-0 flex-1">
           <CardTitle title={session.startUrl}>{labelFor(session.startUrl)}</CardTitle>
-          <div className="mt-1 flex items-center gap-2 text-[10px] text-[var(--color-muted-foreground)]">
+          <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
             <span title={started.toLocaleString()}>{formatTime(started)}</span>
             <span>·</span>
             <span>{formatDuration(duration)}</span>
@@ -434,7 +427,7 @@ function SessionCard({
         </div>
 
         {session.error && (
-          <div className="mt-2 flex items-start gap-1.5 rounded-md border border-[color-mix(in_oklab,var(--color-destructive)_30%,var(--color-border))] bg-[color-mix(in_oklab,var(--color-destructive)_8%,transparent)] px-2 py-1.5 text-[11px] text-[var(--color-destructive)]">
+          <div className="mt-2 flex items-start gap-1.5 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
             <AlertTriangle className="mt-0.5 size-3 shrink-0" />
             <span className="break-words">{session.error}</span>
           </div>
@@ -474,7 +467,7 @@ function SessionCard({
             variant="ghost"
             onClick={onDelete}
             disabled={busy}
-            className="ml-auto text-[var(--color-destructive)] hover:bg-[color-mix(in_oklab,var(--color-destructive)_10%,transparent)] hover:text-[var(--color-destructive)]"
+            className="ml-auto text-destructive hover:bg-destructive/15 hover:text-destructive"
             aria-label="Delete"
           >
             <Trash2 />
@@ -501,7 +494,7 @@ function UploadRow({
 
   if (recording) {
     return (
-      <div className="flex items-center gap-2 rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-muted)] px-2.5 py-1.5 text-[11px] text-[var(--color-muted-foreground)]">
+      <div className="flex items-center gap-2 rounded-md border border-dashed border-border bg-muted px-2.5 py-1.5 text-[11px] text-muted-foreground">
         <Sparkles className="size-3" />
         <span>Stop recording to auto-upload {aiReady ? '' : '(after signing in)'}</span>
       </div>
@@ -510,9 +503,9 @@ function UploadRow({
 
   if (upload?.state === 'done') {
     return (
-      <div className="flex items-center gap-2 rounded-md border border-[color-mix(in_oklab,var(--color-success)_30%,var(--color-border))] bg-[color-mix(in_oklab,var(--color-success)_8%,transparent)] px-2.5 py-1.5 text-[11px]">
-        <CloudUpload className="size-3.5 text-[var(--color-success)]" />
-        <span className="flex-1 text-[var(--color-success)]">
+      <div className="flex items-center gap-2 rounded-md border border-success/30 bg-success/10 px-2.5 py-1.5 text-[11px]">
+        <CloudUpload className="size-3.5 text-success" />
+        <span className="flex-1 text-success">
           Uploaded {timeAgo(upload.uploadedAt)}
         </span>
         <Button
@@ -529,7 +522,7 @@ function UploadRow({
 
   if (upload?.state === 'pending') {
     return (
-      <div className="flex items-center gap-2 rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-muted)] px-2.5 py-1.5 text-[11px] text-[var(--color-muted-foreground)]">
+      <div className="flex items-center gap-2 rounded-md border border-dashed border-border bg-muted px-2.5 py-1.5 text-[11px] text-muted-foreground">
         <Loader2 className="size-3 animate-spin" />
         Uploading to server…
       </div>
@@ -538,7 +531,7 @@ function UploadRow({
 
   if (upload?.state === 'error') {
     return (
-      <div className="flex items-start gap-2 rounded-md border border-[color-mix(in_oklab,var(--color-destructive)_30%,var(--color-border))] bg-[color-mix(in_oklab,var(--color-destructive)_8%,transparent)] px-2.5 py-1.5 text-[11px] text-[var(--color-destructive)]">
+      <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-[11px] text-destructive">
         <AlertTriangle className="mt-0.5 size-3 shrink-0" />
         <div className="flex-1 break-words">
           Upload failed: {upload.message}
@@ -555,7 +548,7 @@ function UploadRow({
   // session card refreshes every ~1.5s and will flip to 'pending' shortly.
   if (aiReady) {
     return (
-      <div className="flex items-center gap-2 rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-muted)] px-2.5 py-1.5 text-[11px] text-[var(--color-muted-foreground)]">
+      <div className="flex items-center gap-2 rounded-md border border-dashed border-border bg-muted px-2.5 py-1.5 text-[11px] text-muted-foreground">
         <Loader2 className="size-3 animate-spin" />
         Queuing upload…
       </div>
@@ -563,7 +556,7 @@ function UploadRow({
   }
 
   return (
-    <div className="flex items-center gap-2 rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-muted)] px-2.5 py-1.5 text-[11px] text-[var(--color-muted-foreground)]">
+    <div className="flex items-center gap-2 rounded-md border border-dashed border-border bg-muted px-2.5 py-1.5 text-[11px] text-muted-foreground">
       <CloudUpload className="size-3" />
       <span>Sign in via Settings to enable auto-upload.</span>
     </div>

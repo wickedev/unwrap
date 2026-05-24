@@ -1,8 +1,8 @@
 import * as React from 'react'
 import { Layout } from './_layout'
-import { Card, CardContent } from '../components/ui/card'
+import { Card, CardContent } from '@unwrap/ui'
 import { MethodPill } from './project'
-import { cn } from '../components/lib/cn'
+import { cn } from '@unwrap/ui'
 import type { ProjectDiff, ChangedEndpoint, ChangedGraphqlOp, SchemaChangeLine } from '../project-compare'
 import type { GraphqlOperation } from '../graphql-extract'
 import type { EndpointEntry, RouteEntry, AssetEntry } from '../project-aggregate'
@@ -19,11 +19,11 @@ export function ProjectComparePage({ email, diff }: { email: string; diff: Proje
 
       <Card className="mb-4">
         <CardContent className="p-4 grid gap-2 grid-cols-[repeat(auto-fit,minmax(170px,1fr))]">
-          <Kpi label="Endpoints +" value={diff.endpoints.addedInRight.length} color="text-[hsl(var(--success))]" />
-          <Kpi label="Endpoints −" value={diff.endpoints.removedInRight.length} color="text-[hsl(var(--danger))]" />
-          <Kpi label="Endpoints ~" value={diff.endpoints.changed.length} color="text-[hsl(var(--warning))]" />
-          <Kpi label="Routes +" value={diff.routes.addedInRight.length} color="text-[hsl(var(--success))]" />
-          <Kpi label="Routes −" value={diff.routes.removedInRight.length} color="text-[hsl(var(--danger))]" />
+          <Kpi label="Endpoints +" value={diff.endpoints.addedInRight.length} color="text-success" />
+          <Kpi label="Endpoints −" value={diff.endpoints.removedInRight.length} color="text-danger" />
+          <Kpi label="Endpoints ~" value={diff.endpoints.changed.length} color="text-warning" />
+          <Kpi label="Routes +" value={diff.routes.addedInRight.length} color="text-success" />
+          <Kpi label="Routes −" value={diff.routes.removedInRight.length} color="text-danger" />
           <Kpi label="GraphQL ~" value={diff.graphqlOps.changed.length} color="text-purple-500" />
           <Kpi label="Same endpoints" value={diff.endpoints.bothUnchanged} color="text-muted-foreground" />
         </CardContent>
@@ -119,16 +119,16 @@ function Empty({ msg }: { msg: string }) {
 
 function rowClass(kind: 'added' | 'removed' | 'changed') {
   return cn('flex items-baseline gap-2 flex-wrap px-3 py-2 rounded-md border mb-1',
-    kind === 'added' && 'border-[hsl(var(--success))]/25 bg-[hsl(var(--success))]/5',
-    kind === 'removed' && 'border-[hsl(var(--danger))]/25 bg-[hsl(var(--danger))]/5',
-    kind === 'changed' && 'border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/5',
+    kind === 'added' && 'border-success/25 bg-success/5',
+    kind === 'removed' && 'border-danger/25 bg-danger/5',
+    kind === 'changed' && 'border-warning/25 bg-warning/5',
   )
 }
 function signClass(kind: 'added' | 'removed' | 'changed') {
   return cn('font-mono font-bold min-w-[14px]',
-    kind === 'added' && 'text-[hsl(var(--success))]',
-    kind === 'removed' && 'text-[hsl(var(--danger))]',
-    kind === 'changed' && 'text-[hsl(var(--warning))]',
+    kind === 'added' && 'text-success',
+    kind === 'removed' && 'text-danger',
+    kind === 'changed' && 'text-warning',
   )
 }
 
@@ -167,15 +167,15 @@ function ChangedEndpointRow({ c }: { c: ChangedEndpoint }) {
 function DiffPill({ kind, children }: { kind: 'add' | 'remove' | 'change'; children: React.ReactNode }) {
   return (
     <span className={cn('inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold mr-1',
-      kind === 'add' && 'bg-[hsl(var(--success))]/20 text-[hsl(var(--success))]',
-      kind === 'remove' && 'bg-[hsl(var(--danger))]/20 text-[hsl(var(--danger))]',
-      kind === 'change' && 'bg-[hsl(var(--warning))]/20 text-[hsl(var(--warning))]',
+      kind === 'add' && 'bg-success/20 text-success',
+      kind === 'remove' && 'bg-danger/20 text-danger',
+      kind === 'change' && 'bg-warning/20 text-warning',
     )}>{children}</span>
   )
 }
 
 function SchemaChangeRow({ line }: { line: SchemaChangeLine }) {
-  const cls = line.kind === '+' ? 'text-[hsl(var(--success))]' : line.kind === '-' ? 'text-[hsl(var(--danger))]' : 'text-[hsl(var(--warning))]'
+  const cls = line.kind === '+' ? 'text-success' : line.kind === '-' ? 'text-danger' : 'text-warning'
   return <li className="text-xs"><span className={cn('font-bold mr-1', cls)}>{line.kind}</span> <code className={cls}>{line.path}</code> <span className="text-muted-foreground ml-1">{line.detail}</span></li>
 }
 
@@ -210,14 +210,14 @@ function ChangedGqlRow({ c }: { c: ChangedGraphqlOp }) {
 
 function RouteRow({ r, sign }: { r: RouteEntry; sign: '+' | '−' }) {
   const kind = sign === '+' ? 'added' : 'removed'
-  return <li className={cn('px-3 py-1.5 rounded-md', kind === 'added' && 'bg-[hsl(var(--success))]/5', kind === 'removed' && 'bg-[hsl(var(--danger))]/5')}>
+  return <li className={cn('px-3 py-1.5 rounded-md', kind === 'added' && 'bg-success/5', kind === 'removed' && 'bg-danger/5')}>
     <span className={signClass(kind)}>{sign}</span> <code>{r.normalizedPath}</code> <span className="text-xs text-muted-foreground ml-1.5">{r.visitCount} visit{r.visitCount === 1 ? '' : 's'}</span>
   </li>
 }
 
 function AssetRow({ a, sign }: { a: AssetEntry; sign: '+' | '−' }) {
   const kind = sign === '+' ? 'added' : 'removed'
-  return <li className={cn('px-3 py-1.5 rounded-md', kind === 'added' && 'bg-[hsl(var(--success))]/5', kind === 'removed' && 'bg-[hsl(var(--danger))]/5')}>
+  return <li className={cn('px-3 py-1.5 rounded-md', kind === 'added' && 'bg-success/5', kind === 'removed' && 'bg-danger/5')}>
     <span className={signClass(kind)}>{sign}</span> <code>{a.url}</code> <span className="text-xs text-muted-foreground ml-1.5">{a.mimeType}</span>
   </li>
 }

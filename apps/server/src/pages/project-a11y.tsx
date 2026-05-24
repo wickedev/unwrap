@@ -1,14 +1,14 @@
 import { Layout } from './_layout'
-import { Card, CardContent } from '../components/ui/card'
-import { Badge } from '../components/ui/badge'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
-import { cn } from '../components/lib/cn'
+import { Card, CardContent } from '@unwrap/ui'
+import { Badge } from '@unwrap/ui'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@unwrap/ui'
+import { cn } from '@unwrap/ui'
 import type { ProjectA11yReport, AggregatedFinding } from '../project-a11y'
 import { titleFor, severityFor } from '../project-a11y'
 import type { AccessibilityFinding, AccessibilityPageReport } from '@unwrap/protocol'
 
 const SEV_VARIANT: Record<'high' | 'warn' | 'info', 'danger' | 'warning' | 'muted'> = { high: 'danger', warn: 'warning', info: 'muted' }
-const SEV_BG: Record<'high' | 'warn' | 'info', string> = { high: 'bg-[hsl(var(--danger))]', warn: 'bg-[hsl(var(--warning))]', info: 'bg-gray-500' }
+const SEV_BG: Record<'high' | 'warn' | 'info', string> = { high: 'bg-danger', warn: 'bg-warning', info: 'bg-gray-500' }
 
 export function ProjectA11yPage({ email, host, report }: { email: string; host: string; report: ProjectA11yReport | null }) {
   return (
@@ -31,9 +31,9 @@ export function ProjectA11yPage({ email, host, report }: { email: string; host: 
           <>
             <Card className="mb-4">
               <CardContent className="p-4 grid gap-2 grid-cols-[repeat(auto-fit,minmax(170px,1fr))]">
-                <Kpi label="Pages scanned" value={report.pages.length} color="text-[hsl(var(--primary))]" />
+                <Kpi label="Pages scanned" value={report.pages.length} color="text-primary" />
                 <Kpi label="Total findings" value={report.totals.reduce((n, t) => n + t.totalCount, 0)} color={kpiColor(report.totals)} />
-                <Kpi label="High-sev kinds" value={report.totals.filter((t) => severityFor(t.kind) === 'high').length} color="text-[hsl(var(--danger))]" />
+                <Kpi label="High-sev kinds" value={report.totals.filter((t) => severityFor(t.kind) === 'high').length} color="text-danger" />
                 <Kpi label="Sessions w/ AX" value={`${report.sessionsWithAxData}/${report.sessionCountTotal}`} color="text-muted-foreground" />
               </CardContent>
             </Card>
@@ -85,8 +85,8 @@ function Total({ t }: { t: AggregatedFinding }) {
   return (
     <div className={cn(
       'rounded-lg border p-3.5',
-      sev === 'high' && 'border-[hsl(var(--danger))]/35 bg-[hsl(var(--danger))]/5',
-      sev === 'warn' && 'border-[hsl(var(--warning))]/35 bg-[hsl(var(--warning))]/5',
+      sev === 'high' && 'border-danger/35 bg-danger/5',
+      sev === 'warn' && 'border-warning/35 bg-warning/5',
     )}>
       <div className="flex gap-2 items-center mb-1.5 flex-wrap">
         <Badge variant={SEV_VARIANT[sev]}>{sev}</Badge>
@@ -110,7 +110,7 @@ function PageRow({ p }: { p: AccessibilityPageReport }) {
   return (
     <TableRow>
       <TableCell><code title={p.url}>{truncateUrl(p.url, 72)}</code></TableCell>
-      <TableCell className={cn('text-right font-semibold', total === 0 ? 'text-muted-foreground' : 'text-[hsl(var(--danger))]')}>{total}</TableCell>
+      <TableCell className={cn('text-right font-semibold', total === 0 ? 'text-muted-foreground' : 'text-danger')}>{total}</TableCell>
       <TableCell className="text-right text-muted-foreground">{p.nodeCount}</TableCell>
       <TableCell>
         {p.findings.length === 0
@@ -128,8 +128,8 @@ function PageRow({ p }: { p: AccessibilityPageReport }) {
 }
 
 function kpiColor(totals: AggregatedFinding[]): string {
-  if (totals.some((t) => severityFor(t.kind) === 'high')) return 'text-[hsl(var(--danger))]'
-  if (totals.some((t) => severityFor(t.kind) === 'warn')) return 'text-[hsl(var(--warning))]'
+  if (totals.some((t) => severityFor(t.kind) === 'high')) return 'text-danger'
+  if (totals.some((t) => severityFor(t.kind) === 'warn')) return 'text-warning'
   return 'text-muted-foreground'
 }
 

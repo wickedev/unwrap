@@ -1,7 +1,7 @@
 import { Layout } from './_layout'
-import { Card, CardContent } from '../components/ui/card'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
-import { cn } from '../components/lib/cn'
+import { Card, CardContent } from '@unwrap/ui'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@unwrap/ui'
+import { cn } from '@unwrap/ui'
 import type { ProjectCoverage } from '../project-coverage'
 import type { CoverageFile } from '@unwrap/protocol'
 
@@ -26,10 +26,10 @@ export function ProjectCoveragePage({ email, host, coverage }: { email: string; 
           <>
             <Card className="mb-4">
               <CardContent className="p-4 grid gap-2 grid-cols-[repeat(auto-fit,minmax(180px,1fr))]">
-                <Kpi label="JS used" value={formatBytes(coverage.jsUsedBytes)} color="text-[hsl(var(--success))]" />
+                <Kpi label="JS used" value={formatBytes(coverage.jsUsedBytes)} color="text-success" />
                 <Kpi label="JS total" value={formatBytes(coverage.jsTotalBytes)} color="text-foreground" />
                 <Kpi label="JS used %" value={percent(coverage.jsUsedBytes, coverage.jsTotalBytes)} color={pickColor(coverage.jsUsedBytes, coverage.jsTotalBytes)} />
-                <Kpi label="CSS used" value={formatBytes(coverage.cssUsedBytes)} color="text-[hsl(var(--success))]" />
+                <Kpi label="CSS used" value={formatBytes(coverage.cssUsedBytes)} color="text-success" />
                 <Kpi label="CSS total" value={formatBytes(coverage.cssTotalBytes)} color="text-foreground" />
                 <Kpi label="CSS used %" value={percent(coverage.cssUsedBytes, coverage.cssTotalBytes)} color={pickColor(coverage.cssUsedBytes, coverage.cssTotalBytes)} />
               </CardContent>
@@ -85,12 +85,12 @@ function FileRow({ f }: { f: CoverageFile }) {
     <TableRow>
       <TableCell><code title={f.url}>{truncate(prettyUrl(f.url), 64)}</code></TableCell>
       <TableCell className="text-right">
-        <span className={cn('inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase text-white', f.kind === 'js' ? 'bg-[hsl(var(--warning))]' : 'bg-[hsl(var(--primary))]')}>{f.kind}</span>
+        <span className={cn('inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase text-white', f.kind === 'js' ? 'bg-warning' : 'bg-primary')}>{f.kind}</span>
       </TableCell>
       <TableCell className="text-right">{formatBytes(f.usedBytes)}</TableCell>
       <TableCell className="text-right">{formatBytes(f.totalBytes)}</TableCell>
       <TableCell className={cn('text-right font-semibold', cls)}>{Math.round(pct * 100)}%</TableCell>
-      <TableCell className={cn('text-right', dead > 100_000 ? 'text-[hsl(var(--danger))]' : 'text-muted-foreground')}>{formatBytes(dead)}</TableCell>
+      <TableCell className={cn('text-right', dead > 100_000 ? 'text-danger' : 'text-muted-foreground')}>{formatBytes(dead)}</TableCell>
       <TableCell>
         <div className="h-2 bg-muted rounded overflow-hidden">
           <div className={cn('h-full', barClass(pct))} style={{ width: `${(pct * 100).toFixed(1)}%` }} />
@@ -101,14 +101,14 @@ function FileRow({ f }: { f: CoverageFile }) {
 }
 
 function colorClass(r: number) {
-  if (r >= 0.7) return 'text-[hsl(var(--success))]'
-  if (r >= 0.4) return 'text-[hsl(var(--warning))]'
-  return 'text-[hsl(var(--danger))]'
+  if (r >= 0.7) return 'text-success'
+  if (r >= 0.4) return 'text-warning'
+  return 'text-danger'
 }
 function barClass(r: number) {
-  if (r >= 0.7) return 'bg-[hsl(var(--success))]'
-  if (r >= 0.4) return 'bg-[hsl(var(--warning))]'
-  return 'bg-[hsl(var(--danger))]'
+  if (r >= 0.7) return 'bg-success'
+  if (r >= 0.4) return 'bg-warning'
+  return 'bg-danger'
 }
 function percent(used: number, total: number) {
   if (total === 0) return '—'

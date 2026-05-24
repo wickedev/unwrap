@@ -1,5 +1,5 @@
 import { Layout } from './_layout'
-import { Card, CardContent } from '../components/ui/card'
+import { Card, CardContent } from '@unwrap/ui'
 import type { ProjectGraph } from '../project-graph'
 import { renderProjectGraphSvg } from '../project-graph'
 

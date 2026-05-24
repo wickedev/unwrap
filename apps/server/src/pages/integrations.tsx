@@ -1,7 +1,7 @@
 import { Layout } from './_layout'
-import { Card, CardContent } from '../components/ui/card'
-import { Button } from '../components/ui/button'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
+import { Card, CardContent } from '@unwrap/ui'
+import { Button } from '@unwrap/ui'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@unwrap/ui'
 import type { InstallationRecord } from '../github-app'
 
 export function IntegrationsPage({

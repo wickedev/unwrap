@@ -1,8 +1,8 @@
 import { Layout } from './_layout'
-import { Card, CardContent } from '../components/ui/card'
-import { Button } from '../components/ui/button'
-import { Input } from '../components/ui/input'
-import { cn } from '../components/lib/cn'
+import { Card, CardContent } from '@unwrap/ui'
+import { Button } from '@unwrap/ui'
+import { Input } from '@unwrap/ui'
+import { cn } from '@unwrap/ui'
 import type { SentryCorrelation } from '../sentry'
 import type { SentryConfig } from '../storage/sentry-config'
 
@@ -25,7 +25,7 @@ export function ProjectSentryPage({ email, host, config, correlations, error }: 
         When a Sentry issue matches a captured error, you get the user flow that produced it.
       </p>
 
-      {error && <div className="rounded-md border border-[hsl(var(--danger))]/40 bg-[hsl(var(--danger))]/5 p-3 text-sm text-[hsl(var(--danger))] mb-4">{error}</div>}
+      {error && <div className="rounded-md border border-danger/40 bg-danger/5 p-3 text-sm text-danger mb-4">{error}</div>}
 
       {!config
         ? (
@@ -60,9 +60,9 @@ export function ProjectSentryPage({ email, host, config, correlations, error }: 
 
             <Card className="mb-4">
               <CardContent className="p-4 grid gap-2 grid-cols-[repeat(auto-fit,minmax(150px,1fr))]">
-                <Kpi label="Recent issues" value={correlations.length} color="text-[hsl(var(--primary))]" />
-                <Kpi label="Matched sessions" value={matched.length} color="text-[hsl(var(--success))]" />
-                <Kpi label="Unmatched issues" value={unmatched.length} color={unmatched.length === 0 ? 'text-muted-foreground' : 'text-[hsl(var(--warning))]'} />
+                <Kpi label="Recent issues" value={correlations.length} color="text-primary" />
+                <Kpi label="Matched sessions" value={matched.length} color="text-success" />
+                <Kpi label="Unmatched issues" value={unmatched.length} color={unmatched.length === 0 ? 'text-muted-foreground' : 'text-warning'} />
               </CardContent>
             </Card>
 
@@ -99,7 +99,7 @@ function Kpi({ label, value, color }: { label: string; value: number | string; c
 function IssueRow({ c }: { c: SentryCorrelation }) {
   const issue = c.issue
   return (
-    <div className={cn('rounded-lg border p-3', c.matchedSessions.length > 0 && 'border-[hsl(var(--success))]/35 bg-[hsl(var(--success))]/5')}>
+    <div className={cn('rounded-lg border p-3', c.matchedSessions.length > 0 && 'border-success/35 bg-success/5')}>
       <div className="flex justify-between gap-2 items-baseline flex-wrap">
         <a href={issue.permalink} target="_blank" rel="noreferrer" className="font-semibold text-foreground hover:underline">{issue.title}</a>
         <span className="text-xs text-muted-foreground">

@@ -1,8 +1,8 @@
 import { Layout } from './_layout'
-import { Card, CardContent } from '../components/ui/card'
-import { Button } from '../components/ui/button'
-import { Input } from '../components/ui/input'
-import { Badge } from '../components/ui/badge'
+import { Card, CardContent } from '@unwrap/ui'
+import { Button } from '@unwrap/ui'
+import { Input } from '@unwrap/ui'
+import { Badge } from '@unwrap/ui'
 import type { LinearConfig } from '../storage/linear-config'
 import type { SlackConfig } from '../storage/slack-config'
 import type { SentryConfig } from '../storage/sentry-config'
@@ -24,8 +24,8 @@ export function ProjectIntegrationsPage({ email, host, linear, slack, sentry, re
       <h2 className="m-0 text-xl font-bold">Per-project integrations</h2>
       <p className="text-xs text-muted-foreground mt-1 mb-4">External services this project can post to: file Linear issues from findings, ping Slack on regression, see Sentry errors correlated to captured user flows.</p>
 
-      {message && <Card className="mb-3 border-[hsl(var(--success))]/40 bg-[hsl(var(--success))]/5"><CardContent className="p-3">{message}</CardContent></Card>}
-      {error && <div className="rounded-md border border-[hsl(var(--danger))]/40 bg-[hsl(var(--danger))]/5 p-3 text-sm text-[hsl(var(--danger))] mb-3">{error}</div>}
+      {message && <Card className="mb-3 border-success/40 bg-success/5"><CardContent className="p-3">{message}</CardContent></Card>}
+      {error && <div className="rounded-md border border-danger/40 bg-danger/5 p-3 text-sm text-danger mb-3">{error}</div>}
 
       <section className="mb-6">
         <h2 className="text-sm font-semibold m-0 mb-3">🟪 Linear</h2>

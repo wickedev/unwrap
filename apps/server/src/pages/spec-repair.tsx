@@ -1,7 +1,7 @@
 import { Layout } from './_layout'
-import { Card, CardContent } from '../components/ui/card'
-import { Button } from '../components/ui/button'
-import { Textarea } from '../components/ui/input'
+import { Card, CardContent } from '@unwrap/ui'
+import { Button } from '@unwrap/ui'
+import { Textarea } from '@unwrap/ui'
 import type { SpecRepairResult } from '../spec-repair'
 
 export function SpecRepairPage({ email, sessionId, originalSpec, result, error }: {
@@ -20,7 +20,7 @@ export function SpecRepairPage({ email, sessionId, originalSpec, result, error }
         then proposes a patched spec with updated selectors. Other things (test name, structure, intent) stay the same.
       </p>
 
-      {error && <div className="rounded-md border border-[hsl(var(--danger))]/40 bg-[hsl(var(--danger))]/5 p-3 text-sm text-[hsl(var(--danger))] mb-4">{error}</div>}
+      {error && <div className="rounded-md border border-danger/40 bg-danger/5 p-3 text-sm text-danger mb-4">{error}</div>}
 
       {!result
         ? (
@@ -57,7 +57,7 @@ function ResultView({ originalSpec, r }: { originalSpec: string; r: SpecRepairRe
           <div className="flex justify-between items-baseline flex-wrap gap-2">
             <div>
               {changed
-                ? <strong className="text-[hsl(var(--success))]">✓ Repair suggested</strong>
+                ? <strong className="text-success">✓ Repair suggested</strong>
                 : <strong className="text-muted-foreground">No change suggested</strong>}
               <div className="text-xs text-muted-foreground mt-0.5">
                 {r.contextUsedUrl
@@ -80,7 +80,7 @@ function ResultView({ originalSpec, r }: { originalSpec: string; r: SpecRepairRe
                 <pre className="text-xs max-h-[600px] overflow-auto"><code>{originalSpec}</code></pre>
               </div>
               <div>
-                <h3 className="text-sm font-semibold m-0 mb-1.5 text-[hsl(var(--success))]">After (proposed)</h3>
+                <h3 className="text-sm font-semibold m-0 mb-1.5 text-success">After (proposed)</h3>
                 <pre className="text-xs max-h-[600px] overflow-auto"><code>{r.repairedSpec}</code></pre>
               </div>
             </div>

@@ -1,11 +1,11 @@
 import * as React from 'react'
 import type { SessionListItem, StoredSession, VerificationResult, VerifyStep, VisualDiff } from '@unwrap/protocol'
 import { Layout } from './_layout'
-import { Card, CardContent } from '../components/ui/card'
-import { Badge } from '../components/ui/badge'
-import { Button } from '../components/ui/button'
-import { Input, Select } from '../components/ui/input'
-import { cn } from '../components/lib/cn'
+import { Card, CardContent } from '@unwrap/ui'
+import { Badge } from '@unwrap/ui'
+import { Button } from '@unwrap/ui'
+import { Input, Select } from '@unwrap/ui'
+import { cn } from '@unwrap/ui'
 import { Timeline } from './timeline'
 import { SessionWaterfall } from './session-waterfall'
 
@@ -35,10 +35,10 @@ export function SessionDetailPage({
       <p className="text-xs text-muted-foreground break-all m-0 mb-4">{summary.meta.url}</p>
 
       {reg && (
-        <Card className={cn('mb-4 border-2', regVariant === 'success' ? 'border-[hsl(var(--success))]/40 bg-[hsl(var(--success))]/5' : regVariant === 'warning' ? 'border-[hsl(var(--warning))]/40 bg-[hsl(var(--warning))]/5' : 'border-[hsl(var(--danger))]/40 bg-[hsl(var(--danger))]/5')}>
+        <Card className={cn('mb-4 border-2', regVariant === 'success' ? 'border-success/40 bg-success/5' : regVariant === 'warning' ? 'border-warning/40 bg-warning/5' : 'border-danger/40 bg-danger/5')}>
           <CardContent className="p-4 flex justify-between items-center gap-3 flex-wrap">
             <div>
-              <span className={cn('font-semibold', regVariant === 'success' ? 'text-[hsl(var(--success))]' : regVariant === 'warning' ? 'text-[hsl(var(--warning))]' : 'text-[hsl(var(--danger))]')}>
+              <span className={cn('font-semibold', regVariant === 'success' ? 'text-success' : regVariant === 'warning' ? 'text-warning' : 'text-danger')}>
                 {regGlyph} vs previous capture
               </span>
               <span className="text-xs text-muted-foreground ml-2">{reg.headline}</span>
@@ -69,10 +69,10 @@ export function SessionDetailPage({
 
       {!session.video && session.videoError && (
         <Section title="Tab recording">
-          <Card className="border-[hsl(var(--warning))]/40 bg-[hsl(var(--warning))]/5">
+          <Card className="border-warning/40 bg-warning/5">
             <CardContent className="p-4">
               <div className="text-sm">
-                <strong className="text-[hsl(var(--warning))]">⚠️ Video not captured.</strong> {session.videoError}
+                <strong className="text-warning">⚠️ Video not captured.</strong> {session.videoError}
               </div>
             </CardContent>
           </Card>
@@ -117,7 +117,7 @@ export function SessionDetailPage({
               </div>
               {generated.description && <p className="mt-2 text-sm">{generated.description}</p>}
               {generated.warnings && generated.warnings.length > 0 && (
-                <div className="mt-3 rounded-md border border-[hsl(var(--danger))]/40 bg-[hsl(var(--danger))]/5 p-3 text-sm text-[hsl(var(--danger))]">
+                <div className="mt-3 rounded-md border border-danger/40 bg-danger/5 p-3 text-sm text-danger">
                   <strong>Warnings:</strong>
                   <ul className="mt-1.5 ml-5 list-disc">
                     {generated.warnings.map((w, i) => <li key={i}>{w}</li>)}
@@ -134,7 +134,7 @@ export function SessionDetailPage({
                 {isCanonical
                   ? (
                     <div className="flex justify-between items-center gap-2 flex-wrap">
-                      <span className="text-xs font-semibold text-[hsl(var(--success))]">
+                      <span className="text-xs font-semibold text-success">
                         ✓ Marked as canonical for <a href={`/projects/${encodeURIComponent(session.summary.meta.host)}/tests`} className="text-primary">{session.summary.meta.host}</a>
                       </span>
                       <form method="post" action={`/projects/${encodeURIComponent(session.summary.meta.host)}/tests/${encodeURIComponent(session.id)}/remove`} onSubmit={"return confirm('Remove from canonical suite?')" as never}>
@@ -214,7 +214,7 @@ function VerificationView({ session }: { session: StoredSession }) {
         {v.finalUrl && <span>· ended at <code className="text-[11px]">{truncate(v.finalUrl, 60)}</code></span>}
       </div>
       {v.errorBeforeStart && (
-        <div className="rounded-md border border-[hsl(var(--danger))]/40 bg-[hsl(var(--danger))]/5 p-3 text-sm text-[hsl(var(--danger))]">{v.errorBeforeStart}</div>
+        <div className="rounded-md border border-danger/40 bg-danger/5 p-3 text-sm text-danger">{v.errorBeforeStart}</div>
       )}
       {v.visualDiffMessage && <div className="text-xs text-muted-foreground mt-2">Visual diff skipped: {v.visualDiffMessage}</div>}
       {v.steps.length > 0 && (
@@ -228,7 +228,7 @@ function VerificationView({ session }: { session: StoredSession }) {
 
 function StepCard({ step, screenshotBase }: { step: VerifyStep; screenshotBase: string }) {
   const symbol = step.status === 'ok' ? '✓' : step.status === 'failed' ? '✗' : '·'
-  const colorClass = step.status === 'ok' ? 'text-[hsl(var(--success))]' : step.status === 'failed' ? 'text-[hsl(var(--danger))]' : 'text-muted-foreground'
+  const colorClass = step.status === 'ok' ? 'text-success' : step.status === 'failed' ? 'text-danger' : 'text-muted-foreground'
   const isInitial = step.actionType === 'initial'
   const label = isInitial ? 'Initial state (post-goto)' : `Step ${step.index + 1} · ${step.actionType}`
 
@@ -328,7 +328,7 @@ function SCRIPT(sessionId: string, filename: string, initialSpec: string) {
         } catch (e) {
           status.innerHTML = '';
           const err = document.createElement('div');
-          err.className = 'text-[hsl(var(--danger))]';
+          err.className = 'text-danger';
           err.textContent = (e && e.message) || String(e);
           status.appendChild(err);
           btn.disabled = false;
@@ -351,7 +351,7 @@ function SCRIPT(sessionId: string, filename: string, initialSpec: string) {
           } catch (e) {
             verifyStatus.innerHTML = '';
             const errEl = document.createElement('div');
-            errEl.className = 'text-[hsl(var(--danger))]';
+            errEl.className = 'text-danger';
             errEl.textContent = (e && e.message) || String(e);
             verifyStatus.appendChild(errEl);
             verifyBtn.disabled = false;

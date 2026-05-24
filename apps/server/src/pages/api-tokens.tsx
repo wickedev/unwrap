@@ -1,8 +1,8 @@
 import { Layout } from './_layout'
-import { Card, CardContent } from '../components/ui/card'
-import { Button } from '../components/ui/button'
-import { Input } from '../components/ui/input'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
+import { Card, CardContent } from '@unwrap/ui'
+import { Button } from '@unwrap/ui'
+import { Input } from '@unwrap/ui'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@unwrap/ui'
 import type { ApiTokenRecord } from '../storage/api-tokens'
 
 export function ApiTokensPage({
@@ -23,7 +23,7 @@ export function ApiTokensPage({
       <p className="text-xs text-muted-foreground mt-1 mb-4">Long-lived bearer tokens for uploading captures from CI or scripts. Use them with the <code className="rounded bg-muted px-1.5 py-0.5">unwrap-cli</code> package or any HTTP client.</p>
 
       {freshlyMinted && (
-        <Card className="mb-4 border-[hsl(var(--success))]/40 bg-[hsl(var(--success))]/5">
+        <Card className="mb-4 border-success/40 bg-success/5">
           <CardContent className="p-4">
             <strong>New token created — copy it now.</strong>
             <div className="text-xs text-muted-foreground mt-1">This is the only time the full token is shown in the UI. Treat it like a password.</div>

@@ -1,5 +1,5 @@
 import { Layout } from './_layout'
-import { Button } from '../components/ui/button'
+import { Button } from '@unwrap/ui'
 import type { ProjectTestPlan } from '../project-test-plan'
 
 export function TestPlanPage({ email, host, plan, error }: { email: string; host: string; plan?: ProjectTestPlan; error?: string }) {
@@ -12,7 +12,7 @@ export function TestPlanPage({ email, host, plan, error }: { email: string; host
         Every scenario cites specific evidence from the captures and includes Playwright-flavored assertions ready to translate into spec code.
       </p>
 
-      {error && <div className="rounded-md bg-[hsl(var(--danger))]/10 border border-[hsl(var(--danger))]/30 text-[hsl(var(--danger))] p-3 text-sm mb-3">{error}</div>}
+      {error && <div className="rounded-md bg-danger/10 border border-danger/30 text-danger p-3 text-sm mb-3">{error}</div>}
 
       {plan
         ? (

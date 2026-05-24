@@ -1,7 +1,7 @@
 import { Layout } from './_layout'
-import { Card, CardContent } from '../components/ui/card'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
-import { cn } from '../components/lib/cn'
+import { Card, CardContent } from '@unwrap/ui'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@unwrap/ui'
+import { cn } from '@unwrap/ui'
 import type { ProjectWsChannel } from '../project-websockets'
 import type { WsMessageType } from '@unwrap/protocol'
 
@@ -29,9 +29,9 @@ export function ProjectWebSocketsPage({ email, host, channels }: { email: string
             <Card className="mb-4">
               <CardContent className="p-4 grid gap-2 grid-cols-[repeat(auto-fit,minmax(180px,1fr))]">
                 <Kpi label="Channels" value={channels.length} color="text-purple-500" />
-                <Kpi label="Messages" value={totalMessages} color="text-[hsl(var(--primary))]" />
+                <Kpi label="Messages" value={totalMessages} color="text-primary" />
                 <Kpi label="Bytes" value={formatBytes(totalBytes)} color="text-foreground" />
-                <Kpi label="Distinct types" value={channels.reduce((n, c) => n + c.messageTypes.length, 0)} color="text-[hsl(var(--success))]" />
+                <Kpi label="Distinct types" value={channels.reduce((n, c) => n + c.messageTypes.length, 0)} color="text-success" />
               </CardContent>
             </Card>
             {channels.map((ch, i) => <Channel key={i} ch={ch} />)}
@@ -57,7 +57,7 @@ function Channel({ ch }: { ch: ProjectWsChannel }) {
         <div className="pb-2 mb-2 border-b">
           <code className="text-xs break-all">{ch.url}</code>
           <div className="text-xs text-muted-foreground mt-0.5">
-            <span className="text-[hsl(var(--success))]">↑ {ch.totalSendCount} sent</span> · <span className="text-[hsl(var(--primary))]">↓ {ch.totalRecvCount} received</span> · {formatBytes(ch.totalSendBytes + ch.totalRecvBytes)} total · {ch.sessionCount} session{ch.sessionCount === 1 ? '' : 's'}
+            <span className="text-success">↑ {ch.totalSendCount} sent</span> · <span className="text-primary">↓ {ch.totalRecvCount} received</span> · {formatBytes(ch.totalSendBytes + ch.totalRecvBytes)} total · {ch.sessionCount} session{ch.sessionCount === 1 ? '' : 's'}
           </div>
         </div>
         {ch.messageTypes.length === 0
@@ -89,8 +89,8 @@ function MessageRow({ t }: { t: WsMessageType }) {
       <TableCell><code>{t.key}</code></TableCell>
       <TableCell>
         <span className={cn('inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase',
-          t.direction === 'send' && 'bg-[hsl(var(--success))]/20 text-[hsl(var(--success))]',
-          t.direction === 'recv' && 'bg-[hsl(var(--primary))]/20 text-[hsl(var(--primary))]',
+          t.direction === 'send' && 'bg-success/20 text-success',
+          t.direction === 'recv' && 'bg-primary/20 text-primary',
           t.direction === 'both' && 'bg-purple-500/20 text-purple-500',
         )}>{t.direction}</span>
       </TableCell>

@@ -1,8 +1,8 @@
 import { Layout } from './_layout'
-import { Card, CardContent } from '../components/ui/card'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
+import { Card, CardContent } from '@unwrap/ui'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@unwrap/ui'
 import { MethodPill } from './project'
-import { cn } from '../components/lib/cn'
+import { cn } from '@unwrap/ui'
 import type { TestCoverage, RouteCoverage, EndpointCoverage } from '../test-coverage'
 
 export function TestCoveragePage({ email, host, coverage }: { email: string; host: string; coverage: TestCoverage }) {
@@ -21,11 +21,11 @@ export function TestCoveragePage({ email, host, coverage }: { email: string; hos
 
       <Card className="mb-4">
         <CardContent className="p-4 grid gap-2 grid-cols-[repeat(auto-fit,minmax(170px,1fr))]">
-          <Kpi label="Specs" value={coverage.specs.length} color="text-[hsl(var(--primary))]" />
+          <Kpi label="Specs" value={coverage.specs.length} color="text-primary" />
           <Kpi label="Routes covered" value={`${coverage.routesCoveredCount} / ${coverage.routesTotalCount}`} color={colorForPct(routePct)} />
           <Kpi label="Endpoints covered" value={`${coverage.endpointsCoveredCount} / ${coverage.endpointsTotalCount}`} color={colorForPct(epPct)} />
-          <Kpi label="Untested routes" value={untestedRoutes.length} color={untestedRoutes.length === 0 ? 'text-[hsl(var(--success))]' : 'text-[hsl(var(--danger))]'} />
-          <Kpi label="Untested endpoints" value={untestedEndpoints.length} color={untestedEndpoints.length === 0 ? 'text-[hsl(var(--success))]' : 'text-[hsl(var(--danger))]'} />
+          <Kpi label="Untested routes" value={untestedRoutes.length} color={untestedRoutes.length === 0 ? 'text-success' : 'text-danger'} />
+          <Kpi label="Untested endpoints" value={untestedEndpoints.length} color={untestedEndpoints.length === 0 ? 'text-success' : 'text-danger'} />
         </CardContent>
       </Card>
 
@@ -137,7 +137,7 @@ function Kpi({ label, value, color }: { label: string; value: number | string; c
 
 function UntestedRouteRow({ r }: { r: RouteCoverage }) {
   return (
-    <TableRow className="bg-[hsl(var(--danger))]/5">
+    <TableRow className="bg-danger/5">
       <TableCell><code>{r.normalizedPath}</code></TableCell>
       <TableCell className="text-right">{r.visitCount}</TableCell>
       <TableCell className="text-right">{r.sessionCount}</TableCell>
@@ -148,7 +148,7 @@ function UntestedRouteRow({ r }: { r: RouteCoverage }) {
 
 function UntestedEndpointRow({ e }: { e: EndpointCoverage }) {
   return (
-    <TableRow className="bg-[hsl(var(--danger))]/5">
+    <TableRow className="bg-danger/5">
       <TableCell><MethodPill method={e.method} /></TableCell>
       <TableCell><code>{e.normalizedPath}</code></TableCell>
       <TableCell className="text-right">{e.callCount}</TableCell>
@@ -159,20 +159,20 @@ function UntestedEndpointRow({ e }: { e: EndpointCoverage }) {
 function RouteRow({ r }: { r: RouteCoverage }) {
   const covered = r.coveringSpecs.length > 0
   return (
-    <TableRow className={covered ? '' : 'bg-[hsl(var(--danger))]/5'}>
+    <TableRow className={covered ? '' : 'bg-danger/5'}>
       <TableCell><code>{r.normalizedPath}</code></TableCell>
       <TableCell className="text-right">{r.visitCount}</TableCell>
       <TableCell className="text-right">{covered
-        ? <span className="text-[hsl(var(--success))] font-semibold">{r.coveringSpecs.length}</span>
+        ? <span className="text-success font-semibold">{r.coveringSpecs.length}</span>
         : <span className="text-muted-foreground">0</span>}</TableCell>
     </TableRow>
   )
 }
 
 function colorForPct(p: number): string {
-  if (p >= 0.7) return 'text-[hsl(var(--success))]'
-  if (p >= 0.3) return 'text-[hsl(var(--warning))]'
-  return 'text-[hsl(var(--danger))]'
+  if (p >= 0.7) return 'text-success'
+  if (p >= 0.3) return 'text-warning'
+  return 'text-danger'
 }
 
 function truncate(s: string, n: number): string {

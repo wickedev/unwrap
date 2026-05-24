@@ -1,5 +1,5 @@
 import { Layout } from './_layout'
-import { Card, CardContent } from '../components/ui/card'
+import { Card, CardContent } from '@unwrap/ui'
 import type { PageHeatmap } from '../project-heatmap'
 import { renderHeatmapSvg } from '../project-heatmap'
 

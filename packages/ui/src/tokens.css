@@ -1,0 +1,60 @@
+/* Single source of truth for design tokens used across the Unwrap
+ * extension sidepanel and the Cloudflare Workers server pages. Imported
+ * by each app's main stylesheet so the same Tailwind class (`bg-card`,
+ * `text-muted-foreground`, `bg-success/10`) renders identically.
+ *
+ * Color format: HSL channels only ("H S% L%"). Consumers wrap with
+ * hsl(...) inside their Tailwind config, which lets `<alpha-value>`
+ * placeholders compose the opacity modifier cleanly. */
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 222 16% 14%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 16% 14%;
+  --primary: 217 91% 55%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 14% 96%;
+  --secondary-foreground: 222 16% 20%;
+  --muted: 220 14% 96%;
+  --muted-foreground: 220 9% 40%;
+  --accent: 217 91% 55%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 65% 56%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+  --ring: 217 91% 55%;
+  --radius: 0.5rem;
+
+  /* Severity scale used by security / a11y / perf / monitor reports. */
+  --success: 144 67% 36%;
+  --warning: 41 100% 36%;
+  --danger: 0 65% 56%;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: 222 18% 8%;
+    --foreground: 220 13% 91%;
+    --card: 222 16% 11%;
+    --card-foreground: 220 13% 91%;
+    --primary: 217 91% 65%;
+    --primary-foreground: 222 18% 8%;
+    --secondary: 222 14% 16%;
+    --secondary-foreground: 220 13% 91%;
+    --muted: 222 14% 16%;
+    --muted-foreground: 220 9% 60%;
+    --accent: 217 91% 65%;
+    --accent-foreground: 222 18% 8%;
+    --destructive: 0 70% 60%;
+    --destructive-foreground: 222 18% 8%;
+    --border: 222 14% 18%;
+    --input: 222 14% 18%;
+    --ring: 217 91% 65%;
+
+    --success: 144 60% 50%;
+    --warning: 41 90% 60%;
+    --danger: 0 70% 60%;
+  }
+}

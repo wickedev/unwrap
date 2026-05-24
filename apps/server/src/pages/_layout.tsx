@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { cn } from '../components/lib/cn'
+import { cn } from '@unwrap/ui'
 
 // App-shell layout used by every authenticated and public page. Top bar
 // has the brand + (when signed in) a global search box and a user menu;

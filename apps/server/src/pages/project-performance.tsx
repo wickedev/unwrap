@@ -1,8 +1,8 @@
 import { Layout } from './_layout'
-import { Card, CardContent } from '../components/ui/card'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
+import { Card, CardContent } from '@unwrap/ui'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@unwrap/ui'
 import { MethodPill } from './project'
-import { cn } from '../components/lib/cn'
+import { cn } from '@unwrap/ui'
 import type { PerformanceReport, EndpointPerf, SlowCall, N1Pattern } from '../project-performance'
 
 export function ProjectPerformancePage({ email, host, report }: { email: string; host: string; report: PerformanceReport }) {
@@ -27,11 +27,11 @@ export function ProjectPerformancePage({ email, host, report }: { email: string;
           <>
             <Card className="mb-4">
               <CardContent className="p-4 grid gap-2 grid-cols-[repeat(auto-fit,minmax(170px,1fr))]">
-                <Kpi label="Endpoints" value={report.endpoints.length} color="text-[hsl(var(--primary))]" />
+                <Kpi label="Endpoints" value={report.endpoints.length} color="text-primary" />
                 <Kpi label="Calls (with latency)" value={report.callsWithLatency} color="text-foreground" />
                 <Kpi label="Sessions w/ data" value={`${report.sessionsWithLatency}/${report.sessionCountTotal}`} color="text-muted-foreground" />
-                <Kpi label="N+1 suspects" value={report.n1Suspects.length} color={report.n1Suspects.length === 0 ? 'text-muted-foreground' : 'text-[hsl(var(--warning))]'} />
-                <Kpi label="Slowest call" value={formatMs(slowestMs)} color={slowestMs > 1000 ? 'text-[hsl(var(--danger))]' : 'text-foreground'} />
+                <Kpi label="N+1 suspects" value={report.n1Suspects.length} color={report.n1Suspects.length === 0 ? 'text-muted-foreground' : 'text-warning'} />
+                <Kpi label="Slowest call" value={formatMs(slowestMs)} color={slowestMs > 1000 ? 'text-danger' : 'text-foreground'} />
               </CardContent>
             </Card>
 
@@ -115,7 +115,7 @@ function N1Row({ p }: { p: N1Pattern }) {
   return (
     <TableRow>
       <TableCell><code>{p.endpoint}</code></TableCell>
-      <TableCell className="text-right font-semibold text-[hsl(var(--warning))]">{p.maxBurstSize}</TableCell>
+      <TableCell className="text-right font-semibold text-warning">{p.maxBurstSize}</TableCell>
       <TableCell className="text-right">{formatMs(p.maxBurstSpanMs)}</TableCell>
       <TableCell className="text-right">{p.occurrences}</TableCell>
       <TableCell><a href={`/sessions/${p.exampleSessionId}`} className="font-mono text-xs text-primary">{p.exampleSessionId.slice(0, 8)}</a></TableCell>
@@ -134,7 +134,7 @@ function EndpointRow({ e }: { e: EndpointPerf }) {
       <TableCell className="text-right">{formatMs(e.p90)}</TableCell>
       <TableCell className={cn('text-right font-semibold', colorClassForLatency(e.p95))}>{formatMs(e.p95)}</TableCell>
       <TableCell className={cn('text-right font-semibold', colorClassForLatency(e.max))}>{formatMs(e.max)}</TableCell>
-      <TableCell className={cn('text-right', errRate > 0 ? (errRate > 0.05 ? 'text-[hsl(var(--danger))]' : 'text-[hsl(var(--warning))]') : 'text-muted-foreground')}>
+      <TableCell className={cn('text-right', errRate > 0 ? (errRate > 0.05 ? 'text-danger' : 'text-warning') : 'text-muted-foreground')}>
         {e.errorCount}{errRate > 0 && <span className="text-muted-foreground ml-1">({Math.round(errRate * 100)}%)</span>}
       </TableCell>
     </TableRow>
@@ -146,7 +146,7 @@ function SlowCallRow({ c }: { c: SlowCall }) {
     <TableRow>
       <TableCell><MethodPill method={c.method} /></TableCell>
       <TableCell><code title={c.url}>{truncate(c.url, 90)}</code></TableCell>
-      <TableCell className={cn('text-right', c.status >= 400 && 'text-[hsl(var(--danger))] font-semibold')}>{c.status}</TableCell>
+      <TableCell className={cn('text-right', c.status >= 400 && 'text-danger font-semibold')}>{c.status}</TableCell>
       <TableCell className={cn('text-right font-semibold', colorClassForLatency(c.latencyMs))}>{formatMs(c.latencyMs)}</TableCell>
       <TableCell><a href={`/sessions/${c.sessionId}`} className="font-mono text-xs text-primary">{c.sessionId.slice(0, 8)}</a></TableCell>
     </TableRow>
@@ -154,10 +154,10 @@ function SlowCallRow({ c }: { c: SlowCall }) {
 }
 
 function colorClassForLatency(ms: number): string {
-  if (ms > 3000) return 'text-[hsl(var(--danger))]'
-  if (ms > 1000) return 'text-[hsl(var(--warning))]'
+  if (ms > 3000) return 'text-danger'
+  if (ms > 1000) return 'text-warning'
   if (ms > 300) return 'text-foreground'
-  return 'text-[hsl(var(--success))]'
+  return 'text-success'
 }
 function formatMs(ms: number) {
   if (ms < 1) return '<1ms'

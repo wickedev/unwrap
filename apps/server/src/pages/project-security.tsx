@@ -1,10 +1,10 @@
 import { Layout } from './_layout'
-import { Card, CardContent } from '../components/ui/card'
-import { Badge } from '../components/ui/badge'
-import { Button } from '../components/ui/button'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
+import { Card, CardContent } from '@unwrap/ui'
+import { Badge } from '@unwrap/ui'
+import { Button } from '@unwrap/ui'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@unwrap/ui'
 import { MethodPill } from './project'
-import { cn } from '../components/lib/cn'
+import { cn } from '@unwrap/ui'
 import type { SecurityReport, SecurityFinding, AuthMatrixRow } from '../project-security'
 
 const SEV_VARIANT: Record<SecurityFinding['severity'], 'danger' | 'warning' | 'muted'> = {
@@ -29,10 +29,10 @@ export function ProjectSecurityPage({ email, report, linearConnected = false }: 
       <Card className="mb-4">
         <CardContent className="p-4 grid gap-2 grid-cols-[repeat(auto-fit,minmax(150px,1fr))]">
           <Kpi label="Sessions" value={report.sessionCount} color="text-foreground" />
-          <Kpi label="Endpoints" value={report.totals.endpoints} color="text-[hsl(var(--primary))]" />
-          <Kpi label="Auth-protected" value={report.totals.authedEndpoints} color="text-[hsl(var(--success))]" />
+          <Kpi label="Endpoints" value={report.totals.endpoints} color="text-primary" />
+          <Kpi label="Auth-protected" value={report.totals.authedEndpoints} color="text-success" />
           <Kpi label="Cookies seen" value={report.totals.cookies} color="text-purple-500" />
-          <Kpi label="Cross-origin" value={report.totals.crossOriginRequests} color="text-[hsl(var(--warning))]" />
+          <Kpi label="Cross-origin" value={report.totals.crossOriginRequests} color="text-warning" />
           <Kpi label="Findings" value={report.findings.length} color={kpiColor(report.findings)} />
         </CardContent>
       </Card>
@@ -94,8 +94,8 @@ function Finding({ f, host, linearConnected }: { f: SecurityFinding; host: strin
   return (
     <div className={cn(
       'rounded-lg border p-3.5',
-      f.severity === 'high' && 'border-[hsl(var(--danger))]/35 bg-[hsl(var(--danger))]/5',
-      f.severity === 'warn' && 'border-[hsl(var(--warning))]/35 bg-[hsl(var(--warning))]/5',
+      f.severity === 'high' && 'border-danger/35 bg-danger/5',
+      f.severity === 'warn' && 'border-warning/35 bg-warning/5',
     )}>
       <div className="flex gap-2 items-center mb-1.5 flex-wrap">
         <Badge variant={SEV_VARIANT[f.severity]}>{SEV_GLYPH[f.severity]} {f.severity}</Badge>
@@ -122,22 +122,22 @@ function Finding({ f, host, linearConnected }: { f: SecurityFinding; host: strin
 }
 
 function MatrixRow({ r }: { r: AuthMatrixRow }) {
-  const schemeColor = r.scheme === '(none)' ? 'text-muted-foreground' : r.scheme === 'Mixed' ? 'text-[hsl(var(--warning))]' : 'text-[hsl(var(--success))]'
+  const schemeColor = r.scheme === '(none)' ? 'text-muted-foreground' : r.scheme === 'Mixed' ? 'text-warning' : 'text-success'
   return (
     <TableRow>
       <TableCell><MethodPill method={r.method} /></TableCell>
       <TableCell><code>{r.normalizedPath}</code></TableCell>
       <TableCell className={cn('font-semibold', schemeColor)}>{r.scheme}</TableCell>
       <TableCell className="text-right">{r.callCount}</TableCell>
-      <TableCell className={cn('text-right', r.unauthorizedHits > 0 ? 'text-[hsl(var(--danger))]' : 'text-muted-foreground')}>{r.unauthorizedHits || ''}</TableCell>
-      <TableCell className={cn('text-right', r.forbiddenHits > 0 ? 'text-[hsl(var(--danger))]' : 'text-muted-foreground')}>{r.forbiddenHits || ''}</TableCell>
+      <TableCell className={cn('text-right', r.unauthorizedHits > 0 ? 'text-danger' : 'text-muted-foreground')}>{r.unauthorizedHits || ''}</TableCell>
+      <TableCell className={cn('text-right', r.forbiddenHits > 0 ? 'text-danger' : 'text-muted-foreground')}>{r.forbiddenHits || ''}</TableCell>
     </TableRow>
   )
 }
 
 function kpiColor(findings: SecurityFinding[]): string {
-  if (findings.some((f) => f.severity === 'high')) return 'text-[hsl(var(--danger))]'
-  if (findings.some((f) => f.severity === 'warn')) return 'text-[hsl(var(--warning))]'
+  if (findings.some((f) => f.severity === 'high')) return 'text-danger'
+  if (findings.some((f) => f.severity === 'warn')) return 'text-warning'
   return 'text-muted-foreground'
 }
 

@@ -1,7 +1,7 @@
 import { Layout } from './_layout'
-import { Card, CardContent } from '../components/ui/card'
-import { Badge } from '../components/ui/badge'
-import { cn } from '../components/lib/cn'
+import { Card, CardContent } from '@unwrap/ui'
+import { Badge } from '@unwrap/ui'
+import { cn } from '@unwrap/ui'
 import type { CrossSessionVisualDiff, CrossSessionVisualDiffPair } from '@unwrap/protocol'
 import type { SessionDiff, ActionOp, NetworkDiff } from '../sessiondiff'
 
@@ -39,12 +39,12 @@ export function ComparePage({ email, diff, visual, currentSessionId, baselineSes
           <CardContent className="p-4">
             <div className="grid gap-2 grid-cols-[repeat(auto-fit,minmax(150px,1fr))]">
               <Kpi label="Actions kept" value={kept} color="text-muted-foreground" />
-              <Kpi label="Actions added" value={added} color={added > 0 ? 'text-[hsl(var(--success))]' : 'text-muted-foreground'} />
-              <Kpi label="Actions removed" value={removed} color={removed > 0 ? 'text-[hsl(var(--danger))]' : 'text-muted-foreground'} />
-              <Kpi label="Console errors" value={`${diff.console.baselineCount} → ${diff.console.currentCount}`} color={consoleDelta > 0 ? 'text-[hsl(var(--danger))]' : 'text-muted-foreground'} />
-              <Kpi label="Exceptions" value={`${diff.exceptions.baselineCount} → ${diff.exceptions.currentCount}`} color={exceptionDelta > 0 ? 'text-[hsl(var(--danger))]' : 'text-muted-foreground'} />
-              <Kpi label="Net responses Δ" value={netDelta > 0 ? `+${netDelta}` : `${netDelta}`} color={Math.abs(netDelta) > 0 ? 'text-[hsl(var(--warning))]' : 'text-muted-foreground'} />
-              <Kpi label="Final URL" value={diff.finalUrl.match ? '✓ match' : '✗ diverged'} color={diff.finalUrl.match ? 'text-[hsl(var(--success))]' : 'text-[hsl(var(--danger))]'} />
+              <Kpi label="Actions added" value={added} color={added > 0 ? 'text-success' : 'text-muted-foreground'} />
+              <Kpi label="Actions removed" value={removed} color={removed > 0 ? 'text-danger' : 'text-muted-foreground'} />
+              <Kpi label="Console errors" value={`${diff.console.baselineCount} → ${diff.console.currentCount}`} color={consoleDelta > 0 ? 'text-danger' : 'text-muted-foreground'} />
+              <Kpi label="Exceptions" value={`${diff.exceptions.baselineCount} → ${diff.exceptions.currentCount}`} color={exceptionDelta > 0 ? 'text-danger' : 'text-muted-foreground'} />
+              <Kpi label="Net responses Δ" value={netDelta > 0 ? `+${netDelta}` : `${netDelta}`} color={Math.abs(netDelta) > 0 ? 'text-warning' : 'text-muted-foreground'} />
+              <Kpi label="Final URL" value={diff.finalUrl.match ? '✓ match' : '✗ diverged'} color={diff.finalUrl.match ? 'text-success' : 'text-danger'} />
             </div>
             {!diff.finalUrl.match && (
               <div className="text-xs text-muted-foreground mt-3 space-y-1">
@@ -125,12 +125,12 @@ function ActionRow({ op }: { op: ActionOp }) {
   const a = op.kind === 'remove' ? op.baseline : op.current
   return (
     <div className={cn('flex items-baseline gap-2 px-2 py-1 rounded',
-      op.kind === 'add' && 'bg-[hsl(var(--success))]/10',
-      op.kind === 'remove' && 'bg-[hsl(var(--danger))]/10',
+      op.kind === 'add' && 'bg-success/10',
+      op.kind === 'remove' && 'bg-danger/10',
     )}>
       <span className={cn('w-3 text-center font-bold',
-        op.kind === 'add' && 'text-[hsl(var(--success))]',
-        op.kind === 'remove' && 'text-[hsl(var(--danger))]',
+        op.kind === 'add' && 'text-success',
+        op.kind === 'remove' && 'text-danger',
         op.kind === 'keep' && 'text-muted-foreground',
       )}>{sign}</span>
       <code className="text-primary min-w-[50px]">{a.type}</code>
@@ -157,7 +157,7 @@ function NetworkDiffView({ n }: { n: NetworkDiff }) {
               <li key={i}>
                 <code>{s.method ?? 'GET'}</code> <code>{truncate(s.url, 80)}</code> ·{' '}
                 <span className="text-muted-foreground">{s.baselineStatus}</span> →{' '}
-                <span className={s.currentStatus >= 500 ? 'text-[hsl(var(--danger))]' : s.currentStatus >= 400 ? 'text-[hsl(var(--warning))]' : 'text-[hsl(var(--success))]'}>{s.currentStatus}</span>
+                <span className={s.currentStatus >= 500 ? 'text-danger' : s.currentStatus >= 400 ? 'text-warning' : 'text-success'}>{s.currentStatus}</span>
               </li>
             ))}
           </ul>
@@ -165,7 +165,7 @@ function NetworkDiffView({ n }: { n: NetworkDiff }) {
       )}
       {n.onlyInCurrent.length > 0 && (
         <div>
-          <strong className="text-xs text-[hsl(var(--success))]">New in current ({n.onlyInCurrent.length})</strong>
+          <strong className="text-xs text-success">New in current ({n.onlyInCurrent.length})</strong>
           <ul className="my-1 pl-5 text-xs space-y-0.5">
             {n.onlyInCurrent.map((r, i) => <li key={i}><code>{r.status}</code> <code>{truncate(r.url, 80)}</code></li>)}
           </ul>
@@ -173,7 +173,7 @@ function NetworkDiffView({ n }: { n: NetworkDiff }) {
       )}
       {n.onlyInBaseline.length > 0 && (
         <div>
-          <strong className="text-xs text-[hsl(var(--danger))]">Missing in current ({n.onlyInBaseline.length})</strong>
+          <strong className="text-xs text-danger">Missing in current ({n.onlyInBaseline.length})</strong>
           <ul className="my-1 pl-5 text-xs space-y-0.5">
             {n.onlyInBaseline.map((r, i) => <li key={i}><code>{r.status}</code> <code>{truncate(r.url, 80)}</code></li>)}
           </ul>

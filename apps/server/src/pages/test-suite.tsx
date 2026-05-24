@@ -1,9 +1,9 @@
 import { Layout } from './_layout'
-import { Card, CardContent } from '../components/ui/card'
-import { Button } from '../components/ui/button'
-import { Input } from '../components/ui/input'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
-import { cn } from '../components/lib/cn'
+import { Card, CardContent } from '@unwrap/ui'
+import { Button } from '@unwrap/ui'
+import { Input } from '@unwrap/ui'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@unwrap/ui'
+import { cn } from '@unwrap/ui'
 import type { CanonicalTestRecord } from '../storage/canonical-tests'
 import type { StoredSession } from '@unwrap/protocol'
 
@@ -37,9 +37,9 @@ export function TestSuitePage({
 
       <Card className="mb-4">
         <CardContent className="p-4 grid gap-2 grid-cols-[repeat(auto-fit,minmax(150px,1fr))]">
-          <Kpi label="Canonical specs" value={withSpec.length} color="text-[hsl(var(--success))]" />
-          <Kpi label="Candidates" value={candidates.length} color="text-[hsl(var(--primary))]" />
-          {missing > 0 && <Kpi label="Missing spec" value={missing} color="text-[hsl(var(--danger))]" />}
+          <Kpi label="Canonical specs" value={withSpec.length} color="text-success" />
+          <Kpi label="Candidates" value={candidates.length} color="text-primary" />
+          {missing > 0 && <Kpi label="Missing spec" value={missing} color="text-danger" />}
         </CardContent>
       </Card>
 
@@ -129,7 +129,7 @@ function CanonicalRow({ c, sessionsById, host, isShareView }: { c: CanonicalTest
   const hasSpec = !!session?.generated?.spec
   return (
     <TableRow>
-      <TableCell>{hasSpec ? c.name : <span className="text-[hsl(var(--danger))]" title="Source session lacks a generated spec — regenerate from its detail page">{c.name} ⚠</span>}</TableCell>
+      <TableCell>{hasSpec ? c.name : <span className="text-danger" title="Source session lacks a generated spec — regenerate from its detail page">{c.name} ⚠</span>}</TableCell>
       <TableCell>
         {c.tags.length > 0
           ? c.tags.map((t, i) => <span key={i} className="inline-block px-2 py-0.5 bg-muted rounded-full text-xs mr-1">{t}</span>)

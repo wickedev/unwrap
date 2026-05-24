@@ -1,15 +1,15 @@
 import { Layout } from './_layout'
-import { Card, CardContent } from '../components/ui/card'
-import { Button } from '../components/ui/button'
-import { Input, Select } from '../components/ui/input'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table'
-import { cn } from '../components/lib/cn'
+import { Card, CardContent } from '@unwrap/ui'
+import { Button } from '@unwrap/ui'
+import { Input, Select } from '@unwrap/ui'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@unwrap/ui'
+import { cn } from '@unwrap/ui'
 import type { MonitorConfig, MonitorRunSummary } from '../storage/monitor'
 
 const STATUS_CHIP: Record<MonitorRunSummary['status'], string> = {
-  ok: 'bg-[hsl(var(--success))]/20 text-[hsl(var(--success))]',
-  regression: 'bg-[hsl(var(--danger))]/20 text-[hsl(var(--danger))]',
-  error: 'bg-[hsl(var(--warning))]/20 text-[hsl(var(--warning))]',
+  ok: 'bg-success/20 text-success',
+  regression: 'bg-danger/20 text-danger',
+  error: 'bg-warning/20 text-warning',
 }
 
 const INTERVAL_LABEL: Record<MonitorConfig['interval'], string> = {
@@ -89,11 +89,11 @@ export function ProjectMonitorPage({
 
       <Card className="mb-4">
         <CardContent className="p-4 grid gap-2 grid-cols-[repeat(auto-fit,minmax(140px,1fr))]">
-          <Kpi label="Runs (90d)" value={totalRuns} color="text-[hsl(var(--primary))]" />
-          <Kpi label="Clean" value={passCount} color="text-[hsl(var(--success))]" />
-          <Kpi label="Regressions" value={regressionCount} color={regressionCount > 0 ? 'text-[hsl(var(--danger))]' : 'text-muted-foreground'} />
-          <Kpi label="Errors" value={errorCount} color={errorCount > 0 ? 'text-[hsl(var(--warning))]' : 'text-muted-foreground'} />
-          {lastRun && <Kpi label="Last status" value={lastRun.status} color={lastRun.status === 'ok' ? 'text-[hsl(var(--success))]' : lastRun.status === 'regression' ? 'text-[hsl(var(--danger))]' : 'text-[hsl(var(--warning))]'} />}
+          <Kpi label="Runs (90d)" value={totalRuns} color="text-primary" />
+          <Kpi label="Clean" value={passCount} color="text-success" />
+          <Kpi label="Regressions" value={regressionCount} color={regressionCount > 0 ? 'text-danger' : 'text-muted-foreground'} />
+          <Kpi label="Errors" value={errorCount} color={errorCount > 0 ? 'text-warning' : 'text-muted-foreground'} />
+          {lastRun && <Kpi label="Last status" value={lastRun.status} color={lastRun.status === 'ok' ? 'text-success' : lastRun.status === 'regression' ? 'text-danger' : 'text-warning'} />}
         </CardContent>
       </Card>
 
@@ -142,7 +142,7 @@ function RunRow({ r }: { r: MonitorRunSummary }) {
       <TableCell className="text-xs text-muted-foreground">{new Date(r.startedAt).toISOString().replace('T', ' ').slice(0, 16)}</TableCell>
       <TableCell><span className={cn('inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase', STATUS_CHIP[r.status])}>{r.status}</span></TableCell>
       <TableCell className="text-xs">{r.headline}</TableCell>
-      <TableCell className={cn('text-right text-xs', r.finalStatus && r.finalStatus >= 400 ? 'text-[hsl(var(--danger))] font-semibold' : 'text-muted-foreground')}>{r.finalStatus ?? '—'}</TableCell>
+      <TableCell className={cn('text-right text-xs', r.finalStatus && r.finalStatus >= 400 ? 'text-danger font-semibold' : 'text-muted-foreground')}>{r.finalStatus ?? '—'}</TableCell>
       <TableCell className="text-right text-xs text-muted-foreground">{formatMs(r.durationMs)}</TableCell>
     </TableRow>
   )

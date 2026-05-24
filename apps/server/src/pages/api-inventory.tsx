@@ -1,9 +1,9 @@
 import * as React from 'react'
 import { Layout } from './_layout'
-import { Card, CardContent } from '../components/ui/card'
-import { Button } from '../components/ui/button'
+import { Card, CardContent } from '@unwrap/ui'
+import { Button } from '@unwrap/ui'
 import { MethodPill } from './project'
-import { cn } from '../components/lib/cn'
+import { cn } from '@unwrap/ui'
 import type { ApiCall, StoredSession } from '@unwrap/protocol'
 import { inferType } from '../schema-infer'
 import { extractGraphqlOperations, type GraphqlOperation } from '../graphql-extract'
@@ -37,7 +37,7 @@ export function ApiInventoryPage({ email, session }: { email: string; session: S
       <Card className="mb-4">
         <CardContent className="p-4 grid gap-2 grid-cols-[repeat(auto-fit,minmax(140px,1fr))]">
           <Kpi label="Total calls" value={calls.length} color="text-foreground" />
-          <Kpi label="Unique endpoints" value={restGroups.length} color="text-[hsl(var(--primary))]" />
+          <Kpi label="Unique endpoints" value={restGroups.length} color="text-primary" />
           <Kpi label="GraphQL ops" value={graphqlGroups.length} color="text-purple-500" />
           <Kpi label="Hosts" value={new Set(groups.map((g) => g.hostname)).size} color="text-muted-foreground" />
         </CardContent>

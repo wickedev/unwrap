@@ -1,5 +1,5 @@
 import type { StoredSession } from '@unwrap/protocol'
-import { cn } from '../components/lib/cn'
+import { cn } from '@unwrap/ui'
 
 interface Row {
   kind: 'navigation' | 'action' | 'response' | 'console' | 'exception' | 'screenshot'
@@ -12,11 +12,11 @@ interface Row {
 }
 
 const KIND_META: Record<Row['kind'], { label: string; symbol: string; classes: string }> = {
-  navigation: { label: 'nav', symbol: '↗', classes: 'text-[hsl(var(--primary))] bg-[hsl(var(--primary))]/10' },
-  action: { label: 'act', symbol: '◉', classes: 'text-[hsl(var(--success))] bg-[hsl(var(--success))]/10' },
+  navigation: { label: 'nav', symbol: '↗', classes: 'text-primary bg-primary/10' },
+  action: { label: 'act', symbol: '◉', classes: 'text-success bg-success/10' },
   response: { label: 'net', symbol: '⇄', classes: 'text-muted-foreground bg-muted' },
-  console: { label: 'log', symbol: '✎', classes: 'text-[hsl(var(--warning))] bg-[hsl(var(--warning))]/10' },
-  exception: { label: 'err', symbol: '!', classes: 'text-[hsl(var(--danger))] bg-[hsl(var(--danger))]/10' },
+  console: { label: 'log', symbol: '✎', classes: 'text-warning bg-warning/10' },
+  exception: { label: 'err', symbol: '!', classes: 'text-danger bg-danger/10' },
   screenshot: { label: 'shot', symbol: '◳', classes: 'text-purple-500 bg-purple-500/10' },
 }
 
@@ -61,9 +61,9 @@ export function Timeline({ session }: { session: StoredSession }) {
           const rel = row.ts - sessionStart
           const isShot = row.kind === 'screenshot' && typeof row.raw === 'string'
           const statusColor =
-            row.status === 'error' ? 'text-[hsl(var(--danger))]'
-            : row.status === 'warn' ? 'text-[hsl(var(--warning))]'
-            : row.status === 'ok' ? 'text-[hsl(var(--success))]'
+            row.status === 'error' ? 'text-danger'
+            : row.status === 'warn' ? 'text-warning'
+            : row.status === 'ok' ? 'text-success'
             : 'text-foreground'
           return (
             <li key={i} className="grid grid-cols-[120px_1fr] gap-3 px-2.5 py-2 rounded-md border border-transparent hover:bg-muted/40 hover:border-border">
