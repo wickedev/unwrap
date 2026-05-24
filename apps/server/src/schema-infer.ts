@@ -23,6 +23,83 @@ export function inferType(samples: unknown[], rootName = 'Response'): string {
   return `type ${rootName} = ${render(merged, samples.length, 0)}`
 }
 
+// JSON Schema draft-07 (subset) version of the same shape, suitable for
+// dropping straight into an OpenAPI 3.0 `schema` object. Returns null
+// when no samples were given so callers can omit the field cleanly.
+export function inferJsonSchema(samples: unknown[]): JsonSchema | null {
+  if (samples.length === 0) return null
+  const merged = samples.reduce<NodeShape | null>((acc, s) => mergeShape(acc, shapeOf(s, 0), 1), null)
+  if (!merged) return null
+  return renderJsonSchema(merged, samples.length)
+}
+
+export type JsonSchema =
+  | { type: 'null' }
+  | { type: 'string'; enum?: string[]; example?: string }
+  | { type: 'integer' | 'number'; enum?: number[]; example?: number }
+  | { type: 'boolean'; enum?: boolean[]; example?: boolean }
+  | { type: 'array'; items: JsonSchema }
+  | {
+      type: 'object'
+      properties?: Record<string, JsonSchema>
+      required?: string[]
+      additionalProperties?: boolean | JsonSchema
+    }
+  | { oneOf: JsonSchema[] }
+  | Record<string, never> // {} for "any / unknown"
+
+function renderJsonSchema(shape: NodeShape, totalSamples: number): JsonSchema {
+  switch (shape.kind) {
+    case 'null':
+      return { type: 'null' }
+    case 'unknown':
+      return {}
+    case 'boolean': {
+      const enumed = pickEnum<boolean>(shape, 'boolean')
+      return enumed ? { type: 'boolean', enum: enumed } : { type: 'boolean' }
+    }
+    case 'number': {
+      const enumed = pickEnum<number>(shape, 'number')
+      // Heuristic: if every sample is an integer, declare as integer.
+      const allInts = !!shape.samples && [...shape.samples].every((n) => typeof n === 'number' && Number.isInteger(n))
+      const type = allInts ? 'integer' : 'number'
+      return enumed ? { type, enum: enumed } : { type }
+    }
+    case 'string': {
+      const enumed = pickEnum<string>(shape, 'string')
+      return enumed ? { type: 'string', enum: enumed } : { type: 'string' }
+    }
+    case 'array':
+      return { type: 'array', items: renderJsonSchema(shape.element ?? { kind: 'unknown' }, totalSamples) }
+    case 'object': {
+      if (!shape.properties || shape.properties.size === 0) {
+        return { type: 'object', additionalProperties: true }
+      }
+      const props: Record<string, JsonSchema> = {}
+      const required: string[] = []
+      for (const [key, entry] of shape.properties) {
+        props[key] = renderJsonSchema(entry.shape, totalSamples)
+        if (entry.seenIn >= totalSamples) required.push(key)
+      }
+      return {
+        type: 'object',
+        properties: props,
+        ...(required.length > 0 ? { required: required.sort() } : {}),
+      }
+    }
+  }
+}
+
+function pickEnum<T extends string | number | boolean>(shape: NodeShape, kind: string): T[] | null {
+  const s = shape.samples
+  if (!s || s.size === 0) return null
+  if (s.size > MAX_UNION) return null
+  // Match render()'s heuristic: only collapse string sets ≤ 3 to enum, so
+  // the OpenAPI spec stays in sync with the TS type we already infer.
+  if (kind === 'string' && s.size > 3) return null
+  return [...s] as T[]
+}
+
 function shapeOf(v: unknown, depth: number): NodeShape {
   if (depth > MAX_DEPTH) return { kind: 'unknown' }
   if (v === null) return { kind: 'null' }

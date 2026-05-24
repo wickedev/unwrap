@@ -46,6 +46,22 @@ export function ApiInventoryPage({
         ${kpi('Hosts', new Set(groups.map((g) => g.hostname)).size, 'var(--muted)')}
       </div>
 
+      ${restGroups.length > 0
+        ? html`<div class="card" style="margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
+              <strong style="font-size: 13px;">↓ API exports (this session)</strong>
+              <span class="meta" style="font-size: 11px;">For richer schemas, see the project page (aggregates across every capture).</span>
+            </div>
+            <div class="meta" style="font-size: 11px; margin-bottom: 10px;">
+              OpenAPI 3.0 spec + Postman v2.1 collection for the REST endpoints in this session. Generate a TypeScript SDK with <code>npx openapi-typescript &lt;file&gt; -o client.ts</code>.
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <a class="btn secondary" href="/sessions/${session.id}/openapi.json" download>↓ OpenAPI 3.0 (.json)</a>
+              <a class="btn secondary" href="/sessions/${session.id}/postman.json" download>↓ Postman collection (.json)</a>
+            </div>
+          </div>`
+        : ''}
+
       ${calls.length > 0 || (session.summary.staticAssets?.length ?? 0) > 0
         ? html`<div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; border-color: var(--accent);">
             <div style="min-width: 0;">

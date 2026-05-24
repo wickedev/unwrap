@@ -29,6 +29,22 @@ export function ProjectPage({
         ${kpi('Static assets', digest.staticAssets.length, 'var(--muted)')}
       </div>
 
+      ${digest.endpoints.some((e) => !e.graphql)
+        ? html`<div class="card" style="margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
+              <strong style="font-size: 13px;">↓ API exports</strong>
+              <span class="meta" style="font-size: 11px;">For Postman, Stoplight, Insomnia, openapi-typescript, openapi-generator, …</span>
+            </div>
+            <div class="meta" style="font-size: 11px; margin-bottom: 10px;">
+              OpenAPI 3.0 spec inferred from the union of every captured call across this project. Schemas use enums for small string sets, mark optional fields, and include captured request/response examples. Generate a TypeScript SDK with one line: <code>npx openapi-typescript ${escapeAttr(`openapi-${safeHost(digest.host)}.json`)} -o client.ts</code>.
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <a class="btn secondary" href="/projects/${encodeURIComponent(digest.host)}/openapi.json" download>↓ OpenAPI 3.0 (.json)</a>
+              <a class="btn secondary" href="/projects/${encodeURIComponent(digest.host)}/postman.json" download>↓ Postman collection (.json)</a>
+            </div>
+          </div>`
+        : ''}
+
       <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; border-color: var(--accent);">
         <div style="min-width: 0;">
           <strong style="font-size: 13px;">↓ Runnable local clone</strong>
@@ -175,6 +191,14 @@ function tryParse(s: string): unknown {
 
 function truncate(s: string, n: number): string {
   return s.length <= n ? s : s.slice(0, n) + `\n… (${s.length - n} more chars)`
+}
+
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+}
+
+function safeHost(s: string): string {
+  return s.replace(/[^A-Za-z0-9.-]/g, '-').slice(0, 60) || 'project'
 }
 
 function formatAgo(ts: number): string {

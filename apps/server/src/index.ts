@@ -41,6 +41,8 @@ import { extractGraphqlOperations } from './graphql-extract'
 import { aggregateProject } from './project-aggregate'
 import { ProjectPage } from './pages/project'
 import { buildCloneBundle } from './clone-bundle'
+import { buildOpenApiFromProject, buildOpenApiFromSession } from './openapi-export'
+import { buildPostmanFromProject, buildPostmanFromSession } from './postman-export'
 import { verifySession } from './verify'
 import { diffSessions, summarizeRegression } from './sessiondiff'
 import { computeCrossSessionVisualDiff } from './visualcrossdiff'
@@ -585,6 +587,70 @@ app.get('/projects/:host/api/mock', async (c) => {
   return new Response(body, {
     headers: {
       'content-type': 'application/javascript; charset=utf-8',
+      'content-disposition': `attachment; filename="${filename}"`,
+      'cache-control': 'private, no-store',
+    },
+  })
+})
+
+app.get('/projects/:host/openapi.json', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const sessions = await loadProjectSessions(c.env, email, host)
+  if (sessions.length === 0) return c.json(err('Not found'), 404)
+  const digest = aggregateProject(host, sessions)
+  const { filename, body } = buildOpenApiFromProject(digest)
+  return new Response(body, {
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'content-disposition': `attachment; filename="${filename}"`,
+      'cache-control': 'private, no-store',
+    },
+  })
+})
+
+app.get('/projects/:host/postman.json', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const host = decodeURIComponent(c.req.param('host'))
+  const sessions = await loadProjectSessions(c.env, email, host)
+  if (sessions.length === 0) return c.json(err('Not found'), 404)
+  const digest = aggregateProject(host, sessions)
+  const { filename, body } = buildPostmanFromProject(digest)
+  return new Response(body, {
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'content-disposition': `attachment; filename="${filename}"`,
+      'cache-control': 'private, no-store',
+    },
+  })
+})
+
+app.get('/sessions/:id/openapi.json', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const record = await getStoredSession(c.env, email, c.req.param('id'))
+  if (!record) return c.json(err('Not found'), 404)
+  const { filename, body } = buildOpenApiFromSession(record)
+  return new Response(body, {
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'content-disposition': `attachment; filename="${filename}"`,
+      'cache-control': 'private, no-store',
+    },
+  })
+})
+
+app.get('/sessions/:id/postman.json', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const record = await getStoredSession(c.env, email, c.req.param('id'))
+  if (!record) return c.json(err('Not found'), 404)
+  const { filename, body } = buildPostmanFromSession(record)
+  return new Response(body, {
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
       'content-disposition': `attachment; filename="${filename}"`,
       'cache-control': 'private, no-store',
     },
