@@ -2,6 +2,7 @@ import { html, raw } from 'hono/html'
 import type { SessionListItem, StoredSession, VerificationResult, VerifyStep, VisualDiff } from '@unwrap/protocol'
 import { Layout, type Renderable } from './layout'
 import { renderTimeline } from './timeline'
+import { renderSessionWaterfall } from './session-waterfall'
 
 export function SessionDetailPage({
   email,
@@ -121,6 +122,8 @@ export function SessionDetailPage({
 
     <div class="section">
       <h2>Timeline</h2>
+      ${renderSessionWaterfall(session)}
+      <div style="height: 12px;"></div>
       ${renderTimeline(session)}
     </div>
   `
