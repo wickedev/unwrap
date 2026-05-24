@@ -207,16 +207,56 @@ async function main(): Promise<void> {
   const result = (await resp.json()) as UploadSessionResponse
   console.log(`unwrap-cli: uploaded → ${result.url}`)
 
-  if (args.githubRepo && args.githubPr && args.githubToken) {
-    await postOrUpdateGithubComment({
-      server: stripTrailingSlash(args.server),
-      unwrapToken: args.token,
-      sessionId: result.id,
-      githubRepo: args.githubRepo,
-      githubPr: args.githubPr,
-      githubToken: args.githubToken,
-    })
+  if (args.githubRepo && args.githubPr) {
+    if (args.githubToken) {
+      // PAT path — the CLI posts the comment directly.
+      await postOrUpdateGithubComment({
+        server: stripTrailingSlash(args.server),
+        unwrapToken: args.token,
+        sessionId: result.id,
+        githubRepo: args.githubRepo,
+        githubPr: args.githubPr,
+        githubToken: args.githubToken,
+      })
+    } else {
+      // GitHub App path — ask the server to post via its installation.
+      await postCommentViaServer({
+        server: stripTrailingSlash(args.server),
+        unwrapToken: args.token,
+        sessionId: result.id,
+        githubRepo: args.githubRepo,
+        githubPr: args.githubPr,
+      })
+    }
   }
+}
+
+// Server-mediated comment: hands off the (repo, pr, sessionId) to the
+// Unwrap server which uses its GitHub App installation to post with the
+// bot identity. No GitHub token needed on the CLI side — the App has
+// already been granted access at install time.
+async function postCommentViaServer(opts: {
+  server: string
+  unwrapToken: string
+  sessionId: string
+  githubRepo: string
+  githubPr: number
+}): Promise<void> {
+  console.log(`unwrap-cli: posting PR comment via Unwrap GitHub App to ${opts.githubRepo}#${opts.githubPr}`)
+  const r = await fetch(`${opts.server}/api/github/comment`, {
+    method: 'POST',
+    headers: {
+      'authorization': `Bearer ${opts.unwrapToken}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ sessionId: opts.sessionId, repo: opts.githubRepo, pullNumber: opts.githubPr }),
+  })
+  if (!r.ok) {
+    const detail = await r.text()
+    throw new Error(`server-side comment failed: HTTP ${r.status} ${detail.slice(0, 200)}`)
+  }
+  const result = (await r.json()) as { commentId: number; htmlUrl?: string; created: boolean }
+  console.log(`unwrap-cli: ${result.created ? 'created' : 'updated'} PR comment → ${result.htmlUrl ?? `id ${result.commentId}`}`)
 }
 
 const UNWRAP_COMMENT_MARKER = '<!-- unwrap:pr-comment:v1 -->'
@@ -340,7 +380,8 @@ Options:
   --timeout=MS        Per-URL page load timeout (default 30000)
   --github-repo=O/R   Post a diff comment to this PR (env: GITHUB_REPOSITORY)
   --github-pr=N       PR number to comment on (env: UNWRAP_PR_NUMBER)
-  --github-token=TOK  GitHub PAT or GITHUB_TOKEN with pull-requests:write (env: GITHUB_TOKEN)
+  --github-token=TOK  GitHub PAT/GITHUB_TOKEN — if omitted, server posts via its
+                      installed Unwrap GitHub App instead (env: GITHUB_TOKEN)
   -h, --help          This help
 
 Examples:

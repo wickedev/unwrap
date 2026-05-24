@@ -59,6 +59,7 @@ import { searchSessions } from './search'
 import { SearchPage } from './pages/search'
 import { listApiTokens, mintApiToken, revokeApiToken } from './storage/api-tokens'
 import { ApiTokensPage } from './pages/api-tokens'
+import { IntegrationsPage } from './pages/integrations'
 import { analyzeProjectSecurity } from './project-security'
 import { ProjectSecurityPage } from './pages/project-security'
 import { aggregateA11y } from './project-a11y'
@@ -70,6 +71,14 @@ import { TestCoveragePage } from './pages/test-coverage'
 import { loadOrGenerateTestPlan, readCachedTestPlan } from './project-test-plan'
 import { TestPlanPage } from './pages/test-plan'
 import { buildSessionPrComment } from './pr-comment'
+import {
+  forgetInstallation,
+  getInstallation,
+  postOrUpdateCommentAsApp,
+  rememberInstallation,
+  verifyWebhookSignature,
+  type InstallationRecord,
+} from './github-app'
 import {
   addCanonicalTest,
   listCanonicalTests,
@@ -463,6 +472,34 @@ app.get('/sessions', async (c) => {
 })
 
 // ---------- API tokens (long-lived bearer for CLI / CI) ----------
+
+app.get('/settings/integrations', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  // List installations by scanning the KV namespace. For now we list ALL
+  // installations the server has seen — once we add a per-user claim
+  // step we'll filter to "yours."
+  const installations: InstallationRecord[] = []
+  if (c.env.SESSIONS) {
+    let cursor: string | undefined
+    do {
+      const page = await c.env.SESSIONS.list({ prefix: 'github-installation:', cursor })
+      for (const k of page.keys) {
+        // Skip the cached-token entries which use a different prefix.
+        if (k.name.startsWith('github-installation-token:') || k.name.startsWith('github-installation-by-repo:')) continue
+        const raw = await c.env.SESSIONS.get(k.name, 'json')
+        if (raw) installations.push(raw as InstallationRecord)
+      }
+      cursor = page.list_complete ? undefined : page.cursor
+    } while (cursor)
+  }
+  return c.html(IntegrationsPage({
+    email,
+    installations,
+    origin: originOf(c.req.url),
+    ...(c.env.GITHUB_APP_SLUG ? { appSlug: c.env.GITHUB_APP_SLUG } : {}),
+  }))
+})
 
 app.get('/settings/tokens', async (c) => {
   const email = await readEmail(c)
@@ -1251,6 +1288,120 @@ app.get('/projects/:host/postman.json', async (c) => {
       'cache-control': 'private, no-store',
     },
   })
+})
+
+// ---------- GitHub App ----------
+// Webhook receiver. Verifies HMAC-SHA256 of the raw body against the App
+// webhook secret, then dispatches `installation` and
+// `installation_repositories` events into our KV registry. Anything we
+// don't recognize is acked with 204 so GitHub doesn't keep retrying.
+app.post('/webhooks/github', async (c) => {
+  const rawBody = await c.req.text()
+  const sig = c.req.header('x-hub-signature-256') ?? ''
+  const ok = await verifyWebhookSignature(c.env, rawBody, sig)
+  if (!ok) return c.json(err('Invalid signature'), 401)
+  const event = c.req.header('x-github-event') ?? ''
+  let payload: Record<string, unknown>
+  try {
+    payload = JSON.parse(rawBody) as Record<string, unknown>
+  } catch {
+    return c.json(err('Bad JSON'), 400)
+  }
+  if (event === 'installation') {
+    await handleInstallationEvent(c.env, payload)
+  } else if (event === 'installation_repositories') {
+    await handleInstallationRepositoriesEvent(c.env, payload)
+  }
+  return c.body(null, 204)
+})
+
+interface GhInstallation { id: number; account: { login: string; type: 'User' | 'Organization' } }
+interface GhInstallationEvent {
+  action: 'created' | 'deleted' | 'suspend' | 'unsuspend' | 'new_permissions_accepted'
+  installation: GhInstallation
+  repositories?: { full_name: string }[]
+}
+interface GhInstallationReposEvent {
+  action: 'added' | 'removed'
+  installation: GhInstallation
+  repositories_added?: { full_name: string }[]
+  repositories_removed?: { full_name: string }[]
+}
+
+async function handleInstallationEvent(env: Env, payload: Record<string, unknown>): Promise<void> {
+  const e = payload as unknown as GhInstallationEvent
+  if (!e.installation) return
+  if (e.action === 'deleted') {
+    await forgetInstallation(env, e.installation.id)
+    return
+  }
+  const rec: InstallationRecord = {
+    installationId: e.installation.id,
+    accountLogin: e.installation.account.login,
+    accountType: e.installation.account.type,
+    repositories: (e.repositories ?? []).slice(0, 200).map((r) => r.full_name),
+    installedAt: Date.now(),
+    suspended: e.action === 'suspend',
+  }
+  await rememberInstallation(env, rec)
+}
+
+async function handleInstallationRepositoriesEvent(env: Env, payload: Record<string, unknown>): Promise<void> {
+  const e = payload as unknown as GhInstallationReposEvent
+  if (!e.installation) return
+  // For added/removed events, refresh the full repository list. We model
+  // the existing record then mutate — simpler than incremental diff.
+  const prior = await getInstallation(env, e.installation.id)
+  const repoSet = new Set<string>(prior?.repositories ?? [])
+  for (const r of e.repositories_added ?? []) repoSet.add(r.full_name)
+  for (const r of e.repositories_removed ?? []) repoSet.delete(r.full_name)
+  const rec: InstallationRecord = {
+    installationId: e.installation.id,
+    accountLogin: e.installation.account.login,
+    accountType: e.installation.account.type,
+    repositories: [...repoSet],
+    installedAt: prior?.installedAt ?? Date.now(),
+    suspended: prior?.suspended ?? false,
+  }
+  await rememberInstallation(env, rec)
+}
+
+// Server-side post-as-app: same idempotent comment flow as the CLI's
+// PAT path, but using the App's bot identity. Caller authenticates with
+// an Unwrap API token; we look up the GitHub installation for the repo,
+// mint an installation token, post or PATCH the comment.
+app.post('/api/github/comment', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.json(err('Not authenticated'), 401)
+  const body = (await c.req.json().catch(() => ({}))) as { sessionId?: string; repo?: string; pullNumber?: number }
+  if (!body.sessionId || !body.repo || !body.pullNumber) {
+    return c.json(err('sessionId, repo, pullNumber required'), 400)
+  }
+  const record = await getStoredSession(c.env, email, body.sessionId)
+  if (!record) return c.json(err('Session not found'), 404)
+  const host = record.summary.meta.host
+  const items = await listSessions(c.env, email)
+  const allIds = items.filter((s) => s.host === host).map((s) => s.id)
+  const allRecords = (await Promise.all(allIds.map((id) => getStoredSession(c.env, email, id))))
+    .filter((r): r is StoredSession => r !== null)
+  const baselineSessions = allRecords.filter((s) => s.uploadedAt < record.uploadedAt)
+  const md = buildSessionPrComment({
+    origin: originOf(c.req.url),
+    current: record,
+    baselineSessions,
+    currentSessions: [record],
+  })
+  try {
+    const result = await postOrUpdateCommentAsApp({
+      env: c.env,
+      repo: body.repo,
+      pullNumber: body.pullNumber,
+      body: md,
+    })
+    return c.json(result)
+  } catch (e) {
+    return c.json(err('GitHub comment failed', String(e)), 500)
+  }
 })
 
 // Returns a markdown PR comment summarizing what changed in this session
