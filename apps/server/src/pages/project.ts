@@ -99,6 +99,16 @@ export function ProjectPage({
 
       <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
         <div style="min-width: 0;">
+          <strong style="font-size: 13px;">♿ Accessibility findings</strong>
+          <div class="meta" style="font-size: 11px; margin-top: 2px;">
+            Runtime audit from captured AX trees: missing button/link names, alt text, form labels, focusable-but-hidden elements, duplicate ids, heading-level skips. Reflects what the user actually saw.
+          </div>
+        </div>
+        <a class="btn secondary" href="${link('/a11y')}">→ Open a11y report</a>
+      </div>
+
+      <div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+        <div style="min-width: 0;">
           <strong style="font-size: 13px;">🔒 Security overview</strong>
           <div class="meta" style="font-size: 11px; margin-top: 2px;">
             Heuristic findings from captured network + storage data: auth scheme per endpoint, secrets in URLs, mixed content, cross-origin requests, cookie/localStorage inventory, login-redirect surface.

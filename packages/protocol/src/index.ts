@@ -38,6 +38,34 @@ export interface SessionSummary {
   // observed frames into distinct message types (keyed by a JSON discriminator
   // when present) with per-type counts and inferred payload shapes.
   wsChannels?: WsChannel[]
+  // Accessibility findings distilled from the captured CDP AX tree blobs
+  // at upload time. One AccessibilityPageReport per URL we have an AX
+  // tree for; finding types are stable strings ("button-no-name",
+  // "image-no-alt", …) so the server can group them across pages.
+  accessibility?: AccessibilityPageReport[]
+}
+
+export interface AccessibilityPageReport {
+  url: string
+  // Total reachable (non-ignored) nodes scanned.
+  nodeCount: number
+  findings: AccessibilityFinding[]
+}
+
+export interface AccessibilityFinding {
+  // Stable key so the server can aggregate the same finding across pages.
+  kind:
+    | 'button-no-name'
+    | 'link-no-name'
+    | 'image-no-alt'
+    | 'input-no-label'
+    | 'aria-hidden-focusable'
+    | 'heading-skip'
+    | 'duplicate-aria-id'
+  // Up to ~12 sample evidence strings — element role plus any short name
+  // hint we could extract, optionally with index for disambiguation.
+  evidence: string[]
+  count: number
 }
 
 export interface WsChannel {

@@ -8,6 +8,7 @@ import { collectApiCalls } from './api-calls'
 import { collectStaticAssets } from './static-assets'
 import { collectCoverageSummary } from './coverage-summary'
 import { collectWsChannels } from './ws-channels'
+import { collectAccessibilitySummary } from './a11y-summary'
 
 export interface UploadResult {
   id: string
@@ -31,6 +32,8 @@ export async function uploadSessionToServer(sessionId: string): Promise<UploadRe
   if (coverage) summary.coverage = coverage
   const wsChannels = collectWsChannels(events)
   if (wsChannels.length > 0) summary.wsChannels = wsChannels
+  const a11y = await collectAccessibilitySummary(events)
+  if (a11y) summary.accessibility = a11y
   const fallbackSpec = generatePlaywrightScript(meta, events)
   const screenshots = await pickScreenshotsForLlm(sessionId, events, 2)
   const verifyScreenshots = await pickScreenshotsForVerify(sessionId, events)
