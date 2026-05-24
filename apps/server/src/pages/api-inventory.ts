@@ -79,7 +79,7 @@ export function ApiInventoryPage({
             <div style="min-width: 0;">
               <strong style="font-size: 13px;">Mock server</strong>
               <div class="meta" style="font-size: 11px; margin-top: 2px;">
-                Single-file Node.js script. No deps — just run <code>node mock-server.mjs</code> and point your dev frontend at <code>http://localhost:3000</code>. CORS open. Path params matched but ignored (same canned response per endpoint).
+                Single-file Node.js script. No deps — just run <code>node mock-server.mjs</code> and point your dev frontend at <code>http://localhost:3000</code>. CORS open. <strong>Stateful replay</strong>: each route walks through the sequence of responses captured during recording (login → fetch → mutate → refetch reproduces). <code>POST /__unwrap_reset</code> to rewind.
               </div>
             </div>
             <a class="btn" href="/sessions/${session.id}/api/mock" download>↓ Download mock server</a>

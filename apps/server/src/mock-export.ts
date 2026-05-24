@@ -1,8 +1,33 @@
 import type { ApiCall, StoredSession } from '@unwrap/protocol'
 
+interface MockResponse {
+  status: number
+  mime: string
+  body: string
+}
+
+interface MockGroup {
+  method: string
+  hostname: string
+  pathTemplate: string
+  pathPattern: string
+  // Every captured response for this endpoint, in the order they were
+  // observed during the session(s). The runtime replays through these
+  // sequentially so login → fetch → mutate → refetch reproduces the
+  // actual flow the user recorded.
+  sequence: MockResponse[]
+}
+
 // Bundles the session's captured API calls into a single self-contained
-// Node.js mock server. The output uses only `node:http` so the user can
-// run it with `node mock-server.mjs` — no install step, no Hono.
+// Node.js mock server. Uses only `node:http` so the user can run it with
+// `node mock-server.mjs` — no install step, no Hono.
+//
+// The mock is stateful: each route holds the full sequence of captured
+// responses and advances through them on each hit, sticking at the last
+// one once exhausted. POST/PUT/PATCH calls are part of the sequence too,
+// so a real flow (e.g., POST /todos returns 201, next GET /todos returns
+// the updated list) reproduces correctly when the original session did it
+// in that order. `POST /__unwrap_reset` rewinds every route's cursor.
 export function generateMockServer(session: StoredSession): { filename: string; body: string } {
   const calls = session.summary.apiCalls ?? []
   const groups = groupForMock(calls)
@@ -19,9 +44,16 @@ export function generateMockServer(session: StoredSession): { filename: string; 
 //   node ${filename}              # listens on :3000
 //   PORT=8080 node ${filename}    # custom port
 //
-// Each route returns a captured response body verbatim. Path params are
-// matched but ignored; the same canned body comes back regardless of id.
-// Update / extend the ROUTES array below to tweak responses.
+// STATEFUL REPLAY: each route holds the sequence of responses captured
+// during recording. The Nth hit returns the Nth captured response; once
+// the sequence is exhausted the last response is repeated forever. This
+// reproduces stateful flows: login → fetch → mutate → refetch.
+//
+// Rewind all routes at once:
+//   curl -X POST http://localhost:3000/__unwrap_reset
+//
+// Path params are matched but ignored; sequences are keyed by the
+// normalized path template (/users/{id}) regardless of which id was hit.
 
 import { createServer } from 'node:http'
 import { URL } from 'node:url'
@@ -31,11 +63,23 @@ const PORT = Number(process.env.PORT ?? 3000)
 const ROUTES = ${JSON.stringify(routes, null, 2)}
   .map((r) => ({ ...r, pattern: new RegExp(r.pattern) }))
 
+// route key → next response index to serve. Capped at sequence.length - 1.
+const cursor = new Map()
+const cursorKey = (r) => r.method + ' ' + r.path
+
 const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   'access-control-allow-headers': '*',
   'access-control-max-age': '86400',
+}
+
+function pickResponse(route) {
+  const k = cursorKey(route)
+  const idx = cursor.get(k) ?? 0
+  const resp = route.sequence[Math.min(idx, route.sequence.length - 1)]
+  cursor.set(k, Math.min(idx + 1, route.sequence.length - 1))
+  return { resp, index: idx, total: route.sequence.length }
 }
 
 const server = createServer((req, res) => {
@@ -45,46 +89,48 @@ const server = createServer((req, res) => {
     return
   }
   const url = new URL(req.url ?? '/', \`http://\${req.headers.host ?? 'localhost'}\`)
+  if (req.method === 'POST' && url.pathname === '/__unwrap_reset') {
+    cursor.clear()
+    res.writeHead(200, { 'content-type': 'application/json', ...CORS })
+    res.end(JSON.stringify({ reset: true, routes: ROUTES.length }))
+    console.log(\`\${new Date().toISOString()} ↻ reset every route cursor\`)
+    return
+  }
   const route = ROUTES.find(
     (r) => r.method === (req.method ?? '').toUpperCase() && r.pattern.test(url.pathname),
   )
   if (!route) {
-    const lines = ROUTES.map((r) => \`  \${r.method.padEnd(6)} \${r.path}\`).join('\\n')
+    const lines = ROUTES.map((r) => \`  \${r.method.padEnd(6)} \${r.path} (\${r.sequence.length} response\${r.sequence.length === 1 ? '' : 's'})\`).join('\\n')
     res.writeHead(404, { 'content-type': 'text/plain', ...CORS })
     res.end(\`Mock has no route for \${req.method} \${url.pathname}\\n\\nAvailable routes:\\n\${lines}\\n\`)
     return
   }
   // Drain request body so client doesn't hang on POST/PUT.
   req.resume()
-  const status = route.status || 200
-  res.writeHead(status, {
-    'content-type': route.mime || 'application/octet-stream',
+  const { resp, index, total } = pickResponse(route)
+  res.writeHead(resp.status, {
+    'content-type': resp.mime || 'application/octet-stream',
     'x-mock-source': 'unwrap',
+    'x-mock-sequence-position': \`\${Math.min(index + 1, total)}/\${total}\`,
     ...CORS,
   })
-  res.end(route.body ?? '')
-  console.log(\`\${new Date().toISOString()} \${req.method} \${url.pathname} → \${status}\`)
+  res.end(resp.body ?? '')
+  console.log(\`\${new Date().toISOString()} \${req.method} \${url.pathname} → \${resp.status} (seq \${Math.min(index + 1, total)}/\${total})\`)
 })
 
 server.listen(PORT, () => {
   console.log(\`unwrap mock server listening on http://localhost:\${PORT}\`)
-  console.log(\`\${ROUTES.length} route\${ROUTES.length === 1 ? '' : 's'} loaded.\`)
+  console.log(\`\${ROUTES.length} route\${ROUTES.length === 1 ? '' : 's'} loaded (\${ROUTES.reduce((n, r) => n + r.sequence.length, 0)} total responses).\`)
+  console.log(\`POST /__unwrap_reset to rewind all sequences.\`)
 })
 `
 
   return { filename, body }
 }
 
-interface MockGroup {
-  method: string
-  hostname: string
-  pathTemplate: string  // /users/{id}
-  pathPattern: string   // ^/users/[^/]+$ (regex source)
-  pickedCall: ApiCall
-}
-
 function groupForMock(calls: ApiCall[]): MockGroup[] {
-  // Same signature key as the inventory page: group by method + normalized path
+  // Same signature key as the inventory page: group by method + normalized path.
+  // Order within each group is preserved (calls is already chronological).
   const map = new Map<string, ApiCall[]>()
   for (const c of calls) {
     if (!c.method || !c.url) continue
@@ -106,34 +152,46 @@ function groupForMock(calls: ApiCall[]): MockGroup[] {
 
   const out: MockGroup[] = []
   for (const list of map.values()) {
-    // Prefer a 2xx sample with a non-empty body, fall back to whatever we have.
-    const sorted = list
-      .slice()
-      .sort((a, b) => {
-        const aPref = a.responseBody && a.status >= 200 && a.status < 300 ? 0 : 1
-        const bPref = b.responseBody && b.status >= 200 && b.status < 300 ? 0 : 1
-        if (aPref !== bPref) return aPref - bPref
-        return 0
+    // Preserve capture order — the stateful replay depends on it.
+    const sortedByTs = list.slice().sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0))
+    const sequence: MockResponse[] = []
+    for (const c of sortedByTs) {
+      if (c.responseBody === undefined && !(c.status >= 200 && c.status < 300)) {
+        // 4xx/5xx without a body is fine — still preserves "next hit returns an error".
+      }
+      sequence.push({
+        status: c.status || 200,
+        mime: c.responseMimeType || 'application/json',
+        body: c.responseBody ?? '',
       })
-    const picked = sorted[0]!
+    }
+    // De-dupe consecutive identical responses so the cursor doesn't burn through
+    // 50 identical polling responses before reaching the next interesting one.
+    const compacted: MockResponse[] = []
+    for (const r of sequence) {
+      const prev = compacted[compacted.length - 1]
+      if (prev && prev.status === r.status && prev.body === r.body && prev.mime === r.mime) continue
+      compacted.push(r)
+    }
+    const first = sortedByTs[0]!
     let hostname = ''
-    let normalizedPath = picked.url
+    let normalizedPath = first.url
     try {
-      const u = new URL(picked.url)
+      const u = new URL(first.url)
       hostname = u.host
       normalizedPath = normalizePath(u.pathname)
     } catch {
       // ignore
     }
     out.push({
-      method: picked.method.toUpperCase(),
+      method: first.method.toUpperCase(),
       hostname,
       pathTemplate: normalizedPath,
       pathPattern: pathTemplateToRegex(normalizedPath),
-      pickedCall: picked,
+      sequence: compacted,
     })
   }
-  // Sort: longest path first so /users/{id}/posts matches before /users/{id}
+  // Sort: longest path first so /users/{id}/posts matches before /users/{id}.
   out.sort((a, b) => b.pathTemplate.split('/').length - a.pathTemplate.split('/').length)
   return out
 }
@@ -143,9 +201,7 @@ function routeEntry(g: MockGroup) {
     method: g.method,
     path: g.pathTemplate,
     pattern: g.pathPattern,
-    status: g.pickedCall.status || 200,
-    mime: g.pickedCall.responseMimeType || 'application/json',
-    body: g.pickedCall.responseBody ?? '',
+    sequence: g.sequence,
   }
 }
 
@@ -166,8 +222,6 @@ function normalizePath(p: string): string {
 }
 
 function pathTemplateToRegex(template: string): string {
-  // /users/{id}/posts → ^/users/[^/]+/posts$
-  // Escape regex metachars in literal segments; templates → [^/]+.
   const escaped = template
     .split('/')
     .map((seg) => {

@@ -122,7 +122,7 @@ export function ProjectPage({
             <div style="min-width: 0;">
               <strong style="font-size: 13px;">Aggregated mock server</strong>
               <div class="meta" style="font-size: 11px; margin-top: 2px;">
-                Single-file Node.js script with every endpoint ever captured. 2xx samples from any session win; ${digest.endpoints.reduce((n, e) => n + e.callCount, 0)} total calls fed in.
+                Single-file Node.js script with every endpoint ever captured across this project. <strong>Stateful replay</strong>: each route walks through the sequence of responses observed during recording, so flows like login → fetch → mutate → refetch reproduce correctly. ${digest.endpoints.reduce((n, e) => n + e.callCount, 0)} total calls fed in.
               </div>
             </div>
             <a class="btn" href="/projects/${encodeURIComponent(digest.host)}/api/mock" download>↓ Download mock server</a>
