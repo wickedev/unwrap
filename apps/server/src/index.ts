@@ -37,6 +37,7 @@ import { ComparePage } from './pages/compare'
 import { ApiInventoryPage } from './pages/api-inventory'
 import { generateMockServer } from './mock-export'
 import { buildStaticMirrorZip } from './static-mirror'
+import { extractGraphqlOperations } from './graphql-extract'
 import { verifySession } from './verify'
 import { diffSessions, summarizeRegression } from './sessiondiff'
 import { computeCrossSessionVisualDiff } from './visualcrossdiff'
@@ -448,6 +449,22 @@ app.get('/sessions/:id/api/mock', async (c) => {
     headers: {
       'content-type': 'application/javascript; charset=utf-8',
       'content-disposition': `attachment; filename="${filename}"`,
+      'cache-control': 'private, no-store',
+    },
+  })
+})
+
+app.get('/sessions/:id/graphql.txt', async (c) => {
+  const email = await readEmail(c)
+  if (!email) return c.redirect('/', 302)
+  const record = await getStoredSession(c.env, email, c.req.param('id'))
+  if (!record) return c.json(err('Not found'), 404)
+  const artifact = extractGraphqlOperations(record)
+  if (!artifact) return c.json(err('No GraphQL traffic in this session'), 404)
+  return new Response(artifact.body, {
+    headers: {
+      'content-type': 'text/plain; charset=utf-8',
+      'content-disposition': `attachment; filename="${artifact.filename}"`,
       'cache-control': 'private, no-store',
     },
   })

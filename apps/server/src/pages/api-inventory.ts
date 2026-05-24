@@ -2,6 +2,7 @@ import { html, raw } from 'hono/html'
 import type { ApiCall, StoredSession } from '@unwrap/protocol'
 import { Layout, type Renderable } from './layout'
 import { inferType } from '../schema-infer'
+import { extractGraphqlOperations, type GraphqlOperation } from '../graphql-extract'
 
 interface EndpointGroup {
   key: string
@@ -24,6 +25,11 @@ export function ApiInventoryPage({
   const groups = groupEndpoints(calls)
   const graphqlGroups = groups.filter((g) => g.graphql)
   const restGroups = groups.filter((g) => !g.graphql)
+  const graphqlArtifact = extractGraphqlOperations(session)
+  const graphqlByName = new Map<string, GraphqlOperation>()
+  if (graphqlArtifact) {
+    for (const op of graphqlArtifact.operations) graphqlByName.set(op.name, op)
+  }
 
   return Layout({
     title: 'API inventory',
@@ -52,6 +58,18 @@ export function ApiInventoryPage({
           </div>`
         : ''}
 
+      ${graphqlArtifact
+        ? html`<div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+            <div style="min-width: 0;">
+              <strong style="font-size: 13px;">GraphQL operations</strong>
+              <div class="meta" style="font-size: 11px; margin-top: 2px;">
+                ${graphqlArtifact.operationCount} unique operation${graphqlArtifact.operationCount === 1 ? '' : 's'} extracted from captured request bodies. Variable types inferred from <code>variables</code> payloads; <code>__typename</code> values from response data appended as comments per op. Use as a starting point for schema regeneration or client codegen.
+              </div>
+            </div>
+            <a class="btn" href="/sessions/${session.id}/graphql.txt" download>↓ Download operations.graphql</a>
+          </div>`
+        : ''}
+
       ${(session.summary.staticAssets?.length ?? 0) > 0
         ? html`<div class="card" style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
             <div style="min-width: 0;">
@@ -71,14 +89,14 @@ export function ApiInventoryPage({
       ${graphqlGroups.length > 0
         ? html`<div class="section">
             <h2>GraphQL operations</h2>
-            ${graphqlGroups.map((g) => renderGroup(g))}
+            ${graphqlGroups.map((g) => renderGroup(g, graphqlByName))}
           </div>`
         : ''}
 
       ${restGroups.length > 0
         ? html`<div class="section">
             <h2>REST / RPC endpoints</h2>
-            ${restGroups.map((g) => renderGroup(g))}
+            ${restGroups.map((g) => renderGroup(g, graphqlByName))}
           </div>`
         : ''}
 
@@ -87,8 +105,9 @@ export function ApiInventoryPage({
   })
 }
 
-function renderGroup(group: EndpointGroup): Renderable {
+function renderGroup(group: EndpointGroup, graphqlByName: Map<string, GraphqlOperation>): Renderable {
   const sample = group.calls[0]!
+  const gqlOp = group.graphql?.operationName ? graphqlByName.get(group.graphql.operationName) : undefined
   const responseSamples = group.calls
     .map((c) => c.responseBody)
     .filter((b): b is string => !!b)
@@ -126,6 +145,16 @@ function renderGroup(group: EndpointGroup): Renderable {
         · ${statusList}
       </div>
     </div>
+
+    ${gqlOp
+      ? html`<details class="endpoint-section" open>
+          <summary>GraphQL operation — ${gqlOp.operationType} ${gqlOp.name}${Object.keys(gqlOp.variableTypes).length > 0 ? ` · ${Object.keys(gqlOp.variableTypes).length} variable${Object.keys(gqlOp.variableTypes).length === 1 ? '' : 's'}` : ''}${gqlOp.typenames.length > 0 ? ` · returns ${gqlOp.typenames.join(', ')}` : ''}</summary>
+          ${Object.keys(gqlOp.variableTypes).length > 0
+            ? html`<pre style="margin-bottom: 6px;"><code>${formatGqlVariables(gqlOp.variableTypes)}</code></pre>`
+            : ''}
+          <pre><code>${truncateForDisplay(gqlOp.query, 4000)}</code></pre>
+        </details>`
+      : ''}
 
     ${requestSchema
       ? html`<details class="endpoint-section">
@@ -249,6 +278,10 @@ function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
   return `${(n / (1024 * 1024)).toFixed(2)} MB`
+}
+
+function formatGqlVariables(vars: Record<string, string>): string {
+  return Object.entries(vars).map(([k, t]) => `$${k}: ${t}`).join('\n')
 }
 
 function kpi(label: string, value: number | string, color: string): Renderable {
