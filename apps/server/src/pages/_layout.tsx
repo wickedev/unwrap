@@ -49,6 +49,7 @@ export function Layout({
       <main className={cn('flex-1 mx-auto w-full px-6 py-6', wide ? 'max-w-[1280px]' : 'max-w-[960px]')}>
         {children}
       </main>
+      <script dangerouslySetInnerHTML={{ __html: `document.addEventListener('submit',function(e){var f=e.target;if(f&&f.dataset&&f.dataset.confirm){if(!confirm(f.dataset.confirm))e.preventDefault();}});` }} />
     </div>
   )
 }

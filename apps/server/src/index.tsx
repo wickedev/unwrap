@@ -561,19 +561,19 @@ app.get('/settings/integrations', async (c) => {
       cursor = page.list_complete ? undefined : page.cursor
     } while (cursor)
   }
-  return c.html(IntegrationsPage({
+  return ssr(<IntegrationsPage {...({
     email,
     installations,
     origin: originOf(c.req.url),
     ...(c.env.GITHUB_APP_SLUG ? { appSlug: c.env.GITHUB_APP_SLUG } : {}),
-  }))
+  })} />, { title: "Integrations" })
 })
 
 app.get('/settings/tokens', async (c) => {
   const email = await readEmail(c)
   if (!email) return c.redirect('/', 302)
   const tokens = await listApiTokens(c.env, email)
-  return c.html(ApiTokensPage({ email, tokens, origin: originOf(c.req.url) }))
+  return ssr(<ApiTokensPage {...({ email, tokens, origin: originOf(c.req.url) })} />, { title: "API tokens" })
 })
 
 app.post('/api/tokens', async (c) => {
@@ -588,7 +588,7 @@ app.post('/api/tokens', async (c) => {
   // (HTTP clients) get the JSON directly.
   if ((c.req.header('accept') ?? '').includes('text/html')) {
     const tokens = await listApiTokens(c.env, email)
-    return c.html(ApiTokensPage({ email, tokens, freshlyMinted: fresh, origin: originOf(c.req.url) }))
+    return ssr(<ApiTokensPage {...({ email, tokens, freshlyMinted: fresh, origin: originOf(c.req.url) })} />, { title: "API tokens" })
   }
   return c.json(fresh)
 })
@@ -609,7 +609,7 @@ app.get('/search', async (c) => {
   if (!email) return c.redirect('/', 302)
   const query = (c.req.query('q') ?? '').trim()
   if (query === '') {
-    return c.html(SearchPage({ email, query: '', results: [] }))
+    return ssr(<SearchPage {...({ email, query: '', results: [] })} />, { title: "Search" })
   }
   const items = await listSessions(c.env, email)
   // Load full session records — we need their summaries to scan content.
@@ -620,7 +620,7 @@ app.get('/search', async (c) => {
     recent.map((s) => getStoredSession(c.env, email, s.id)),
   )).filter((r): r is StoredSession => r !== null)
   const results = searchSessions(query, sessions)
-  return c.html(SearchPage({ email, query, results }))
+  return ssr(<SearchPage {...({ email, query, results })} />, { title: "Search" })
 })
 
 app.get('/sessions/:id', async (c) => {
@@ -644,7 +644,7 @@ app.get('/sessions/:id/api', async (c) => {
   if (!email) return c.redirect('/', 302)
   const record = await getStoredSession(c.env, email, c.req.param('id'))
   if (!record) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
-  return c.html(ApiInventoryPage({ email, session: record }))
+  return ssr(<ApiInventoryPage {...({ email, session: record })} />, { title: "API inventory" })
 })
 
 app.get('/sessions/:id/api/mock', async (c) => {
@@ -731,7 +731,7 @@ app.get('/share/:token/graph', async (c) => {
   const sessions = await loadProjectSessions(c.env, r.email, r.host)
   if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const graph = buildProjectGraph(sessions)
-  return c.html(ProjectGraphPage({ email: '', host: r.host, graph }))
+  return ssr(<ProjectGraphPage {...({ email: '', host: r.host, graph })} />, { title: "Dependency graph" })
 })
 
 app.get('/share/:token/coverage', async (c) => {
@@ -740,7 +740,7 @@ app.get('/share/:token/coverage', async (c) => {
   const sessions = await loadProjectSessions(c.env, r.email, r.host)
   if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const coverage = aggregateCoverage(sessions)
-  return c.html(ProjectCoveragePage({ email: '', host: r.host, coverage }))
+  return ssr(<ProjectCoveragePage {...({ email: '', host: r.host, coverage })} />, { title: "Coverage" })
 })
 
 app.get('/share/:token/heatmap', async (c) => {
@@ -749,7 +749,7 @@ app.get('/share/:token/heatmap', async (c) => {
   const sessions = await loadProjectSessions(c.env, r.email, r.host)
   if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const pages = buildProjectHeatmaps(sessions)
-  return c.html(ProjectHeatmapPage({ email: '', host: r.host, pages }))
+  return ssr(<ProjectHeatmapPage {...({ email: '', host: r.host, pages })} />, { title: "Heatmap" })
 })
 
 app.get('/share/:token/websockets', async (c) => {
@@ -758,7 +758,7 @@ app.get('/share/:token/websockets', async (c) => {
   const sessions = await loadProjectSessions(c.env, r.email, r.host)
   if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const channels = aggregateWsChannels(sessions)
-  return c.html(ProjectWebSocketsPage({ email: '', host: r.host, channels }))
+  return ssr(<ProjectWebSocketsPage {...({ email: '', host: r.host, channels })} />, { title: "WebSockets" })
 })
 
 app.get('/share/:token/security', async (c) => {
@@ -767,7 +767,7 @@ app.get('/share/:token/security', async (c) => {
   const sessions = await loadProjectSessions(c.env, r.email, r.host)
   if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const report = analyzeProjectSecurity(r.host, sessions)
-  return c.html(ProjectSecurityPage({ email: '', report }))
+  return ssr(<ProjectSecurityPage {...({ email: '', report })} />, { title: "Security" })
 })
 
 app.get('/share/:token/narrative', async (c) => {
@@ -787,7 +787,7 @@ app.get('/share/:token/narrative', async (c) => {
     cached.latestUploadedAt === digest.lastCapturedAt
       ? cached
       : undefined
-  return c.html(ProjectNarrativePage({ email: '', host: r.host, ...(narrative ? { narrative } : {}) }))
+  return ssr(<ProjectNarrativePage {...({ email: '', host: r.host, ...(narrative ? { narrative } : {}) })} />, { title: "Narrative" })
 })
 
 app.get('/share/:token/openapi.json', async (c) => {
@@ -1031,7 +1031,7 @@ app.get('/projects/:host/tests', async (c) => {
     .filter((s) => !!s.generated?.spec && !canonicalIds.has(s.id))
     .sort((a, b) => b.uploadedAt - a.uploadedAt)
     .map((s) => ({ sessionId: s.id, uploadedAt: s.uploadedAt }))
-  return c.html(TestSuitePage({ email, host, canonical, sessionsById, candidates }))
+  return ssr(<TestSuitePage {...({ email, host, canonical, sessionsById, candidates })} />, { title: "Canonical tests" })
 })
 
 app.post('/projects/:host/tests', async (c) => {
@@ -1083,7 +1083,7 @@ app.get('/share/:token/tests', async (c) => {
   if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const canonical = await listCanonicalTests(c.env, r.email, r.host)
   const sessionsById = new Map(sessions.map((s) => [s.id, s]))
-  return c.html(TestSuitePage({ email: '', host: r.host, canonical, sessionsById, candidates: [], share: { token: c.req.param('token') } }))
+  return ssr(<TestSuitePage {...({ email: '', host: r.host, canonical, sessionsById, candidates: [], share: { token: c.req.param('token') } })} />, { title: "Canonical tests" })
 })
 
 app.get('/share/:token/tests.zip', async (c) => {
@@ -1121,11 +1121,9 @@ app.get('/sessions/:id/repair', async (c) => {
   if (!record) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const spec = record.generated?.spec
   if (!spec) {
-    return c.html(
-      SpecRepairPage({ email, sessionId: id, originalSpec: '', error: 'This session has no generated spec — generate one from the session detail page first.' }),
-    )
+    return ssr(<SpecRepairPage email={email} sessionId={id} originalSpec="" error="This session has no generated spec — generate one from the session detail page first." />, { title: 'Spec repair' })
   }
-  return c.html(SpecRepairPage({ email, sessionId: id, originalSpec: spec }))
+  return ssr(<SpecRepairPage email={email} sessionId={id} originalSpec={spec} />, { title: 'Spec repair' })
 })
 
 app.post('/sessions/:id/repair', async (c) => {
@@ -1136,9 +1134,7 @@ app.post('/sessions/:id/repair', async (c) => {
   if (!record) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const spec = record.generated?.spec
   if (!spec) {
-    return c.html(
-      SpecRepairPage({ email, sessionId: id, originalSpec: '', error: 'This session has no generated spec.' }),
-    )
+    return ssr(<SpecRepairPage email={email} sessionId={id} originalSpec="" error="This session has no generated spec." />, { title: 'Spec repair' })
   }
   const form = (await c.req.parseBody().catch(() => ({}))) as Record<string, string | File | undefined>
   const errorMessage = typeof form['errorMessage'] === 'string' ? (form['errorMessage'] as string) : ''
@@ -1150,9 +1146,9 @@ app.post('/sessions/:id/repair', async (c) => {
       errorMessage,
       sessions,
     })
-    return c.html(SpecRepairPage({ email, sessionId: id, originalSpec: spec, result }))
+    return ssr(<SpecRepairPage {...({ email, sessionId: id, originalSpec: spec, result })} />, { title: "Spec repair" })
   } catch (e) {
-    return c.html(SpecRepairPage({ email, sessionId: id, originalSpec: spec, error: String(e) }))
+    return ssr(<SpecRepairPage {...({ email, sessionId: id, originalSpec: spec, error: String(e) })} />, { title: "Spec repair" })
   }
 })
 
@@ -1179,13 +1175,13 @@ app.get('/projects/:host/test-runs', async (c) => {
   const host = decodeURIComponent(c.req.param('host'))
   const runs = await listRecentTestRuns(c.env, email, host, 50)
   const stability = analyzeTestStability(runs)
-  return c.html(TestRunsPage({
+  return ssr(<TestRunsPage {...({
     email,
     host,
     runs,
     stability,
     ingestPath: `${originOf(c.req.url)}/api/test-results`,
-  }))
+  })} />, { title: "Test runs" })
 })
 
 app.get('/projects/:host/integrations', async (c) => {
@@ -1197,7 +1193,7 @@ app.get('/projects/:host/integrations', async (c) => {
     getSlackConfig(c.env, email, host),
     getSentryConfig(c.env, email, host),
   ])
-  return c.html(ProjectIntegrationsPage({ email, host, linear, slack, sentry }))
+  return ssr(<ProjectIntegrationsPage {...({ email, host, linear, slack, sentry })} />, { title: "Project integrations" })
 })
 
 app.post('/projects/:host/integrations/linear', async (c) => {
@@ -1295,13 +1291,13 @@ app.get('/projects/:host/sentry', async (c) => {
   const sessions = await loadProjectSessions(c.env, email, host)
   if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const config = await getSentryConfig(c.env, email, host)
-  if (!config) return c.html(ProjectSentryPage({ email, host, config: null, correlations: [] }))
+  if (!config) return ssr(<ProjectSentryPage {...({ email, host, config: null, correlations: [] })} />, { title: "Sentry" })
   try {
     const issues = await fetchRecentSentryIssues(config, 50)
     const correlations = correlateSentryIssuesWithSessions(issues, sessions)
-    return c.html(ProjectSentryPage({ email, host, config, correlations }))
+    return ssr(<ProjectSentryPage {...({ email, host, config, correlations })} />, { title: "Sentry" })
   } catch (e) {
-    return c.html(ProjectSentryPage({ email, host, config, correlations: [], error: String(e) }))
+    return ssr(<ProjectSentryPage {...({ email, host, config, correlations: [], error: String(e) })} />, { title: "Sentry" })
   }
 })
 
@@ -1335,8 +1331,8 @@ app.get('/projects/:host/test-plan', async (c) => {
   const sessions = await loadProjectSessions(c.env, email, host)
   if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const cached = await readCachedTestPlan(c.env, email, host)
-  if (cached) return c.html(TestPlanPage({ email, host, plan: cached }))
-  return c.html(TestPlanPage({ email, host }))
+  if (cached) return ssr(<TestPlanPage {...({ email, host, plan: cached })} />, { title: "Test plan" })
+  return ssr(<TestPlanPage {...({ email, host })} />, { title: "Test plan" })
 })
 
 app.post('/projects/:host/test-plan/regenerate', async (c) => {
@@ -1355,9 +1351,9 @@ app.post('/projects/:host/test-plan/regenerate', async (c) => {
       canonicalCount: canonical.length,
       forceRegenerate: true,
     })
-    return c.html(TestPlanPage({ email, host, plan }))
+    return ssr(<TestPlanPage {...({ email, host, plan })} />, { title: "Test plan" })
   } catch (e) {
-    return c.html(TestPlanPage({ email, host, error: String(e) }))
+    return ssr(<TestPlanPage {...({ email, host, error: String(e) })} />, { title: "Test plan" })
   }
 })
 
@@ -1365,7 +1361,7 @@ app.get('/share/:token/test-plan', async (c) => {
   const r = await resolveShare(c.env, c.req.param('token'))
   if (!r) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const cached = await readCachedTestPlan(c.env, r.email, r.host)
-  return c.html(TestPlanPage({ email: '', host: r.host, ...(cached ? { plan: cached } : {}) }))
+  return ssr(<TestPlanPage {...({ email: '', host: r.host, ...(cached ? { plan: cached } : {}) })} />, { title: "Test plan" })
 })
 
 app.get('/projects/:host/test-coverage', async (c) => {
@@ -1375,7 +1371,7 @@ app.get('/projects/:host/test-coverage', async (c) => {
   const sessions = await loadProjectSessions(c.env, email, host)
   if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const coverage = analyzeTestCoverage(sessions)
-  return c.html(TestCoveragePage({ email, host, coverage }))
+  return ssr(<TestCoveragePage {...({ email, host, coverage })} />, { title: "Test coverage" })
 })
 
 app.get('/share/:token/test-coverage', async (c) => {
@@ -1384,7 +1380,7 @@ app.get('/share/:token/test-coverage', async (c) => {
   const sessions = await loadProjectSessions(c.env, r.email, r.host)
   if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const coverage = analyzeTestCoverage(sessions)
-  return c.html(TestCoveragePage({ email: '', host: r.host, coverage }))
+  return ssr(<TestCoveragePage {...({ email: '', host: r.host, coverage })} />, { title: "Test coverage" })
 })
 
 app.get('/projects/:host/performance', async (c) => {
@@ -1394,7 +1390,7 @@ app.get('/projects/:host/performance', async (c) => {
   const sessions = await loadProjectSessions(c.env, email, host)
   if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const report = analyzeProjectPerformance(host, sessions)
-  return c.html(ProjectPerformancePage({ email, host, report }))
+  return ssr(<ProjectPerformancePage {...({ email, host, report })} />, { title: "Performance" })
 })
 
 app.get('/share/:token/performance', async (c) => {
@@ -1403,7 +1399,7 @@ app.get('/share/:token/performance', async (c) => {
   const sessions = await loadProjectSessions(c.env, r.email, r.host)
   if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const report = analyzeProjectPerformance(r.host, sessions)
-  return c.html(ProjectPerformancePage({ email: '', host: r.host, report }))
+  return ssr(<ProjectPerformancePage {...({ email: '', host: r.host, report })} />, { title: "Performance" })
 })
 
 app.get('/projects/:host/a11y', async (c) => {
@@ -1413,7 +1409,7 @@ app.get('/projects/:host/a11y', async (c) => {
   const sessions = await loadProjectSessions(c.env, email, host)
   if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const report = aggregateA11y(host, sessions)
-  return c.html(ProjectA11yPage({ email, host, report }))
+  return ssr(<ProjectA11yPage {...({ email, host, report })} />, { title: "Accessibility" })
 })
 
 app.get('/share/:token/a11y', async (c) => {
@@ -1422,7 +1418,7 @@ app.get('/share/:token/a11y', async (c) => {
   const sessions = await loadProjectSessions(c.env, r.email, r.host)
   if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const report = aggregateA11y(r.host, sessions)
-  return c.html(ProjectA11yPage({ email: '', host: r.host, report }))
+  return ssr(<ProjectA11yPage {...({ email: '', host: r.host, report })} />, { title: "Accessibility" })
 })
 
 app.get('/projects/:host/security', async (c) => {
@@ -1433,7 +1429,7 @@ app.get('/projects/:host/security', async (c) => {
   if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const report = analyzeProjectSecurity(host, sessions)
   const linearConnected = !!(await getLinearConfig(c.env, email, host))
-  return c.html(ProjectSecurityPage({ email, report, linearConnected }))
+  return ssr(<ProjectSecurityPage {...({ email, report, linearConnected })} />, { title: "Security" })
 })
 
 app.get('/projects/:host/websockets', async (c) => {
@@ -1443,7 +1439,7 @@ app.get('/projects/:host/websockets', async (c) => {
   const sessions = await loadProjectSessions(c.env, email, host)
   if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const channels = aggregateWsChannels(sessions)
-  return c.html(ProjectWebSocketsPage({ email, host, channels }))
+  return ssr(<ProjectWebSocketsPage {...({ email, host, channels })} />, { title: "WebSockets" })
 })
 
 app.get('/projects/:host/coverage', async (c) => {
@@ -1453,7 +1449,7 @@ app.get('/projects/:host/coverage', async (c) => {
   const sessions = await loadProjectSessions(c.env, email, host)
   if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const coverage = aggregateCoverage(sessions)
-  return c.html(ProjectCoveragePage({ email, host, coverage }))
+  return ssr(<ProjectCoveragePage {...({ email, host, coverage })} />, { title: "Coverage" })
 })
 
 app.get('/projects/:host/diff/:otherHost', async (c) => {
@@ -1471,7 +1467,7 @@ app.get('/projects/:host/diff/:otherHost', async (c) => {
   const left = aggregateProject(leftHost, leftSessions)
   const right = aggregateProject(rightHost, rightSessions)
   const diff = compareProjects(left, right)
-  return c.html(ProjectComparePage({ email, diff }))
+  return ssr(<ProjectComparePage {...({ email, diff })} />, { title: "Compare projects" })
 })
 
 app.get('/projects/:host/heatmap', async (c) => {
@@ -1481,7 +1477,7 @@ app.get('/projects/:host/heatmap', async (c) => {
   const sessions = await loadProjectSessions(c.env, email, host)
   if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const pages = buildProjectHeatmaps(sessions)
-  return c.html(ProjectHeatmapPage({ email, host, pages }))
+  return ssr(<ProjectHeatmapPage {...({ email, host, pages })} />, { title: "Heatmap" })
 })
 
 app.get('/projects/:host/graph', async (c) => {
@@ -1491,7 +1487,7 @@ app.get('/projects/:host/graph', async (c) => {
   const sessions = await loadProjectSessions(c.env, email, host)
   if (sessions.length === 0) return ssr(<LoginPage />, { title: 'Sign in', status: 404 })
   const graph = buildProjectGraph(sessions)
-  return c.html(ProjectGraphPage({ email, host, graph }))
+  return ssr(<ProjectGraphPage {...({ email, host, graph })} />, { title: "Dependency graph" })
 })
 
 app.get('/projects/:host/narrative', async (c) => {
@@ -1515,9 +1511,9 @@ app.get('/projects/:host/narrative', async (c) => {
       cached.latestUploadedAt === digest.lastCapturedAt
         ? cached
         : undefined
-    return c.html(ProjectNarrativePage({ email, host, ...(narrative ? { narrative } : {}) }))
+    return ssr(<ProjectNarrativePage {...({ email, host, ...(narrative ? { narrative } : {}) })} />, { title: "Narrative" })
   } catch (e) {
-    return c.html(ProjectNarrativePage({ email, host, error: String(e) }))
+    return ssr(<ProjectNarrativePage {...({ email, host, error: String(e) })} />, { title: "Narrative" })
   }
 })
 
@@ -1537,9 +1533,9 @@ app.post('/projects/:host/narrative/regenerate', async (c) => {
       latestSession,
       forceRegenerate: true,
     })
-    return c.html(ProjectNarrativePage({ email, host, narrative }))
+    return ssr(<ProjectNarrativePage {...({ email, host, narrative })} />, { title: "Narrative" })
   } catch (e) {
-    return c.html(ProjectNarrativePage({ email, host, error: String(e) }))
+    return ssr(<ProjectNarrativePage {...({ email, host, error: String(e) })} />, { title: "Narrative" })
   }
 })
 
@@ -1807,7 +1803,7 @@ app.get('/sessions/:id/compare/:otherId', async (c) => {
   } catch (e) {
     console.warn('[unwrap-server] cross-session visual diff failed', e)
   }
-  return c.html(ComparePage({ email, diff, visual, currentSessionId: current.id, baselineSessionId: baseline.id }))
+  return ssr(<ComparePage {...({ email, diff, visual, currentSessionId: current.id, baselineSessionId: baseline.id })} />, { title: "Compare" })
 })
 
 // ---------- helpers ----------
